@@ -1,5 +1,65 @@
 # Contributing
 
+This guide covers how Ventris is built, tested and published. To use Ventris, see the [README](README.md).
+
+## Run it
+
+Follow [Run it locally](README.md#run-it-locally) in the README. The app has no build step, so reload the page to see a change.
+
+## Test
+
+The development tools need Node.js 22.13 or later.
+
+```bash
+npm install
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run coverage
+```
+
+```bash
+npm run lint
+```
+
+```bash
+npm run format:check
+```
+
+`npm run coverage` fails if coverage falls below the floors in `package.json`. Raise the floors when coverage improves, so that it can't slip back.
+
+## Layout
+
+| File | Purpose |
+|---|---|
+| `js/edf.js` | Reads EDF and EDF+ files |
+| `js/channels.js` | Reads the kind of each channel from its label |
+| `js/dsp.js` | Computes power spectra, band shares and time statistics |
+| `js/format.js` | Writes times and amounts for the interface |
+| `js/info.js` | Builds the rows of the details panel |
+| `js/demo.js` | Generates the synthetic demo recording |
+| `js/traces.js` | Draws the traces and the time axis, and handles the cursor |
+| `js/theme.js` | Sets the light or dark theme and remembers the choice in the browser |
+| `js/app.js` | Connects the interface |
+
+## Deploy
+
+Changes reach `main` through pull requests, which need the `test` check in [ci.yml](.github/workflows/ci.yml) to pass. Each merge then publishes to GitHub Pages.
+
+Only the files the app needs are published. A new top-level file has to be added to the list in that workflow.
+
+## Update the screenshot
+
+`docs/screenshot.png` in the README shows the demo in the light theme, at 1440 by 900. Retake it when the interface changes. Run the app on port 4173, then run this. It needs Google Chrome, and this is its path on macOS.
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --user-data-dir="$(mktemp -d)" --window-size=1440,900 --force-device-scale-factor=2 --blink-settings=preferredColorScheme=1 --virtual-time-budget=4000 --screenshot="$PWD/docs/screenshot.png" http://localhost:4173
+```
+
 ## Reusing outside code
 
 Ventris is under the BSD 3-Clause license, so anything added to it has to be usable under those terms. Check the license before you copy, port or closely adapt code from another project.
