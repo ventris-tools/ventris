@@ -13,6 +13,8 @@ Ventris is under the BSD 3-Clause license, so anything added to it has to be usa
 
 EDFbrowser, SigViewer, FieldTrip and Brainstorm are under the GPL, so their code is off limits. EDFlib and MNE-Python are under BSD 3-Clause, so theirs can be adapted.
 
+Put a copied license in `licenses/`, and name it in a comment beside the code, as `js/edf.js` does for `licenses/MNE-Python.txt`. Code in the public domain needs only the comment, as in `js/demo.js`.
+
 This rule covers code. You can still write your own version from a published paper or a format specification.
 
 Fonts and other assets keep their own licenses. Put the license file next to the asset and mention it in the README, as `fonts/OFL.txt` does for JetBrains Mono.

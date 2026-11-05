@@ -1,13 +1,23 @@
 import { demoRecording } from './demo.js';
-import { BANDS, bandShares, timeStats } from './dsp.js';
+import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
-import { infoGroups, timeRows, unitLabel } from './info.js';
-import { formatClock, sidewaysPixels, TraceView } from './traces.js';
+import { amount, count, decimalsFor, formatClock } from './format.js';
+import { infoGroups, timeRows } from './info.js';
+import { GAIN_LIMITS, sidewaysPixels, TraceView, windowChoices } from './traces.js';
 
-const WINDOW_CHOICES = [5, 10, 30, 60];
+const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
-const GAIN_LIMITS = [0.2, 12];
-const DEMO_NAME = 'recording.edf';
+const DEMO_NAME = 'Demo (synthetic data)';
+
+// A file that takes longer than this to read shows the dialog, so a drop gets a response.
+const PROGRESS_DELAY = 150;
+
+const BAND_PROBLEMS = {
+  'no-eeg': 'This recording has no EEG channels to measure.',
+  slow: 'No EEG channels here have a high enough sample rate to measure bands.',
+  short: 'This window is too short to measure bands.',
+  flat: 'The EEG channels are flat in this window.',
+};
 
 const $ = (id) => document.getElementById(id);
 const openButton = $('open-recording');
@@ -22,37 +32,51 @@ const errorBox = $('error');
 const nameHeading = $('recording-name');
 const noteLine = $('recording-note');
 const canvas = $('traces');
+const tracePanel = canvas.closest('.trace-panel');
 const position = $('position');
 const positionText = $('position-text');
 const windowSelect = $('window');
+const gainDown = $('gain-down');
+const gainUp = $('gain-up');
 const readout = $('readout');
+const cursorStatus = $('cursor-status');
 const bandBody = $('band-rows');
 const bandNote = $('band-note');
+const annotationSection = $('annotations');
+const annotationList = $('annotation-list');
 
-const state = { recording: null, start: 0, length: 10, gain: 1 };
+const state = { recording: null, start: 0, length: PREFERRED_WINDOW, gain: 1 };
 let bandTimer = 0;
+let progressTimer = 0;
+let openRequest = 0;
 
-function showHover(hit) {
+function showHover(hit, announce = false) {
   if (!hit) {
     readout.textContent = '';
+    cursorStatus.textContent = '';
     return;
   }
-  const value = `${hit.value.toFixed(1)} ${unitLabel(hit.channel.unit)}`.trim();
-  readout.textContent = `${hit.time.toFixed(2)} s · ${hit.channel.label} · ${value}`;
+  const { time, channel, value, spread } = hit;
+  const reading = amount(value, channel.unit, decimalsFor(4 * spread));
+  const text = `${formatClock(time, 2)} · ${channel.label} · ${reading}`;
+  readout.textContent = text;
+  if (announce) cursorStatus.textContent = text;
 }
 
-// Sideways scrolling moves through time, one pixel of trace per pixel scrolled.
-function scrollTime(pixels) {
+function moveTo(time) {
   const { recording, start, length } = state;
   const latest = Math.max(0, recording.duration - length);
-  const next = Math.min(latest, Math.max(0, start + view.secondsFor(pixels)));
+  const next = Math.min(latest, Math.max(0, time));
   if (next === start) return;
   state.start = next;
   position.value = String(next);
   refresh();
 }
 
-const view = new TraceView(canvas, showHover, scrollTime);
+// Sideways scrolling moves through time, one pixel of trace per pixel scrolled.
+const scrollTime = (pixels) => moveTo(state.start + view.secondsFor(pixels));
+
+const view = new TraceView(canvas, $('axis'), showHover, scrollTime);
 
 const bandRows = BANDS.map(({ name, low, high }) => {
   const row = document.createElement('tr');
@@ -74,8 +98,6 @@ const bandRows = BANDS.map(({ name, low, high }) => {
   bandBody.append(row);
   return { name, row, bar, value: valueCell };
 });
-
-const channelCount = (count) => `${count} EEG ${count === 1 ? 'channel' : 'channels'}`;
 
 function fillRows(list, rows) {
   list.replaceChildren(
@@ -102,24 +124,41 @@ function showDetails(recording) {
   const stats = timeStats(recording.channels);
   fillRows($('time-rows'), stats ? timeRows(stats) : []);
   $('time-note').textContent = stats
-    ? `Whole recording, across ${channelCount(stats.channels)}.`
-    : 'This recording has no EEG channels to measure.';
+    ? `Whole recording, across ${count(stats.channels, 'EEG channel')}.`
+    : BAND_PROBLEMS['no-eeg'];
+}
+
+function annotationButton({ time, text }) {
+  const item = document.createElement('li');
+  const button = document.createElement('button');
+  const when = document.createElement('span');
+  button.type = 'button';
+  when.textContent = formatClock(time, Number.isInteger(time) ? 0 : 1);
+  button.append(when, ` ${text}`);
+  // A little of what came before stays in view.
+  button.addEventListener('click', () => moveTo(time - state.length / 10));
+  item.append(button);
+  return item;
+}
+
+function showAnnotations({ annotations }) {
+  annotationSection.hidden = annotations.length === 0;
+  annotationList.replaceChildren(...annotations.map(annotationButton));
 }
 
 function updateBands() {
   const { recording, start, length } = state;
-  const result = bandShares(recording.channels, start, length);
+  const { shares, channels, reason } = bandShares(recording.channels, start, length);
   bandRows.forEach(({ name, row, bar, value }, index) => {
-    const share = result ? result.shares[index] : 0;
+    const share = shares ? shares[index] : 0;
+    bar.hidden = !shares;
     bar.style.setProperty('--share', share.toFixed(4));
-    value.textContent = result ? `${Math.round(share * 100)}%` : '–';
-    row.title = result ? `${name}: ${(share * 100).toFixed(1)}% of 1 to 30 Hz power` : '';
+    value.textContent = shares ? `${Math.round(share * 100)}%` : '–';
+    row.title = shares ? `${name}: ${(share * 100).toFixed(1)}% of ${BAND_RANGE} power` : '';
   });
-  if (result) {
-    bandNote.textContent = `Share of 1 to 30 Hz power in this window, averaged over ${channelCount(result.channels)}.`;
-  } else {
-    bandNote.textContent = 'No EEG channels here have a high enough sample rate to measure bands.';
-  }
+  bandNote.textContent = shares
+    ? `Share of ${BAND_RANGE} power in this window, averaged over ${count(channels, 'EEG channel')}.`
+    : BAND_PROBLEMS[reason];
 }
 
 function refresh() {
@@ -130,7 +169,7 @@ function refresh() {
   position.setAttribute('aria-valuetext', text);
   canvas.setAttribute(
     'aria-label',
-    `EEG traces for ${recording.channels.length} channels, from ${text}. Band shares are in the table.`,
+    `Traces for ${count(recording.channels.length, 'channel')}, from ${text}. Arrow keys read values, and Page Up and Page Down move a window at a time. Band shares are in the table.`,
   );
   view.setView(start, length, gain);
   clearTimeout(bandTimer);
@@ -148,30 +187,39 @@ function setWindow(seconds) {
   refresh();
 }
 
+function updateGainButtons() {
+  const [lowest, highest] = GAIN_LIMITS;
+  gainDown.disabled = state.gain <= lowest;
+  gainUp.disabled = state.gain >= highest;
+}
+
+function formatWindow(seconds, duration) {
+  if (seconds === duration) return 'Whole file';
+  return seconds < 120 ? `${seconds} s` : formatClock(seconds);
+}
+
 function show(recording, name) {
   state.recording = recording;
   viewer.hidden = false;
   state.start = 0;
   state.gain = 1;
+  updateGainButtons();
   nameHeading.textContent = name;
   showDetails(recording);
+  showAnnotations(recording);
   noteLine.textContent = recording.warnings.join(' ');
   noteLine.hidden = recording.warnings.length === 0;
 
-  windowSelect.replaceChildren();
-  const choices = WINDOW_CHOICES.filter((seconds) => seconds < recording.duration);
-  for (const seconds of [...choices, recording.duration].slice(0, WINDOW_CHOICES.length)) {
-    const option = new Option(`${formatWindow(seconds)}`, String(seconds));
-    windowSelect.append(option);
-  }
-  const preferred = Math.min(10, recording.duration);
+  const choices = windowChoices(recording);
+  windowSelect.replaceChildren(
+    ...choices.map(
+      (seconds) => new Option(formatWindow(seconds, recording.duration), String(seconds)),
+    ),
+  );
+  const preferred = choices.findLast((seconds) => seconds <= PREFERRED_WINDOW) ?? choices[0];
   windowSelect.value = String(preferred);
   view.setRecording(recording);
   setWindow(preferred);
-}
-
-function formatWindow(seconds) {
-  return seconds < 120 ? `${Math.round(seconds * 10) / 10} s` : formatClock(seconds);
 }
 
 function setError(message) {
@@ -184,14 +232,28 @@ function openLoader() {
   if (!loader.open) loader.showModal();
 }
 
+function stopReading() {
+  clearTimeout(progressTimer);
+  chooseButton.disabled = false;
+  chooseLabel.textContent = 'Choose an EDF file';
+}
+
+// Reading can take a while, so whatever was opened last is what stays on screen.
 async function openFile(file) {
+  openRequest += 1;
+  const request = openRequest;
   setError('');
   chooseButton.disabled = true;
   chooseLabel.textContent = 'Reading…';
+  clearTimeout(progressTimer);
+  progressTimer = setTimeout(openLoader, PROGRESS_DELAY);
   try {
-    show(parseEdf(await file.arrayBuffer()), file.name);
+    const buffer = await file.arrayBuffer();
+    if (request !== openRequest) return;
+    show(parseEdf(buffer), file.name);
     loader.close();
   } catch (error) {
+    if (request !== openRequest) return;
     openLoader();
     setError(
       error instanceof EdfError
@@ -199,8 +261,7 @@ async function openFile(file) {
         : `${file.name} could not be opened. It may be too large for this browser.`,
     );
   } finally {
-    chooseButton.disabled = false;
-    chooseLabel.textContent = 'Choose an EDF file';
+    if (request === openRequest) stopReading();
   }
 }
 
@@ -215,6 +276,8 @@ loader.addEventListener('close', () => {
 });
 chooseButton.addEventListener('click', () => fileInput.click());
 demoButton.addEventListener('click', () => {
+  openRequest += 1;
+  stopReading();
   setError('');
   show(demoRecording(), DEMO_NAME);
   loader.close();
@@ -231,7 +294,31 @@ position.addEventListener('input', () => {
 });
 windowSelect.addEventListener('change', () => setWindow(Number(windowSelect.value)));
 
-canvas.closest('.trace-panel').addEventListener(
+// Page keys follow the slider convention, where Page Up means later. The canvas keeps the
+// arrow keys for its cursor, so on the slider alone they step a tenth of a window.
+tracePanel.addEventListener('keydown', (event) => {
+  const { recording, start, length } = state;
+  if (!recording) return;
+  const nudge = length / 10;
+  const slider = event.target === position;
+  const targets = {
+    PageUp: start + length,
+    PageDown: start - length,
+    Home: 0,
+    End: recording.duration,
+    ...(slider && {
+      ArrowRight: start + nudge,
+      ArrowUp: start + nudge,
+      ArrowLeft: start - nudge,
+      ArrowDown: start - nudge,
+    }),
+  };
+  if (!(event.key in targets)) return;
+  event.preventDefault();
+  moveTo(targets[event.key]);
+});
+
+tracePanel.addEventListener(
   'wheel',
   (event) => {
     const pixels = sidewaysPixels(event, canvas.clientWidth);
@@ -246,10 +333,11 @@ canvas.closest('.trace-panel').addEventListener(
 function changeGain(factor) {
   const [lowest, highest] = GAIN_LIMITS;
   state.gain = Math.min(highest, Math.max(lowest, state.gain * factor));
+  updateGainButtons();
   refresh();
 }
-$('gain-down').addEventListener('click', () => changeGain(1 / GAIN_STEP));
-$('gain-up').addEventListener('click', () => changeGain(GAIN_STEP));
+gainDown.addEventListener('click', () => changeGain(1 / GAIN_STEP));
+gainUp.addEventListener('click', () => changeGain(GAIN_STEP));
 
 const hasFiles = (event) => event.dataTransfer?.types.includes('Files');
 window.addEventListener('dragover', (event) => {

@@ -1,0 +1,8 @@
+*.css
+*.html
+*.md
+*.txt
+*.yml
+fonts/
+licenses/
+package-lock.json

@@ -1,6 +1,6 @@
-// A synthetic recording, so the page shows something real before any file is opened.
-// Alpha rhythm grows at the back of the head between 20 and 40 seconds,
-// which is what closing your eyes does. It contains no real person's data.
+// A synthetic recording for anyone with no EDF file to hand. Alpha rhythm grows at the
+// back of the head between 20 and 40 seconds, which is what closing your eyes does. It
+// contains no real person's data, and says so wherever a real file shows its details.
 
 const SAMPLE_RATE = 256;
 const SECONDS = 60;
@@ -18,6 +18,8 @@ const MONTAGE = [
   ['O2', 1, 0],
 ];
 
+// mulberry32 by Tommy Ettinger, in the public domain (CC0):
+// https://gist.github.com/tommyettinger/46a874533244883189143505d203312c
 function randomSource(seed) {
   let state = seed;
   return () => {
@@ -57,15 +59,25 @@ export function demoRecording() {
     return { label, unit: 'uV', fs: SAMPLE_RATE, data };
   });
   return {
-    format: 'EDF',
+    format: 'Synthetic',
     duration: SECONDS,
     channels,
-    warnings: [],
+    annotations: [
+      { time: 20, duration: 0, text: 'Eyes closed' },
+      { time: 40, duration: 0, text: 'Eyes open' },
+    ],
+    warnings: ['This is generated data for trying out Ventris, not a real recording.'],
     info: {
-      date: '2026-01-15',
-      time: '09:30:00',
+      date: null,
+      time: null,
       subject: {
-        id: null, name: null, sex: null, birthday: null, hand: null, height: null, weight: null,
+        id: null,
+        name: null,
+        sex: null,
+        birthday: null,
+        hand: null,
+        height: null,
+        weight: null,
       },
       project: null,
       experimenter: null,

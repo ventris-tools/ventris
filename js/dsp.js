@@ -1,5 +1,7 @@
 // Frequency analysis: Welch power spectra summarised into the classic EEG bands.
 
+import { isEeg } from './channels.js';
+
 export const BANDS = [
   { name: 'Delta', low: 1, high: 4 },
   { name: 'Theta', low: 4, high: 8 },
@@ -7,22 +9,18 @@ export const BANDS = [
   { name: 'Beta', low: 13, high: 30 },
 ];
 
+export const BAND_RANGE = `${BANDS[0].low} to ${BANDS.at(-1).high} Hz`;
+
 // Bands need rates well above 30 Hz, and only make sense for brain channels.
 const MIN_SAMPLE_RATE = 64;
-const NON_EEG = /\b(EOG|EMG|ECG|EKG|RESP|TEMP|SPO2|SAO2|PULSE|EVENT|MARKER|STATUS|TRIGGER|ACC)/i;
 
-// The kind of signal a channel carries, read from its label.
-export function channelType(label) {
-  const kind = NON_EEG.exec(label)?.[1].toUpperCase();
-  if (!kind) return 'EEG';
-  if (kind === 'EKG') return 'ECG';
-  return ['EOG', 'EMG', 'ECG'].includes(kind) ? kind : 'Other';
-}
+// Enough for a stable estimate, however long the window is.
+const MAX_SEGMENTS = 256;
 
 // Amplitude across the whole recording, pooled over the EEG channels that share the
 // first one's unit. Returns null when there are no EEG channels.
 export function timeStats(channels) {
-  const eeg = channels.filter(({ label }) => channelType(label) === 'EEG');
+  const eeg = channels.filter(isEeg);
   if (eeg.length === 0) return null;
   const { unit } = eeg[0];
 
@@ -65,13 +63,14 @@ export function timeStats(channels) {
 
 const hannCache = new Map();
 
+// The periodic form, which spectral analysis uses and SciPy's welch defaults to.
 function hann(length) {
   if (!hannCache.has(length)) {
-    const window = new Float64Array(length);
+    const taper = new Float64Array(length);
     for (let i = 0; i < length; i += 1) {
-      window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1));
+      taper[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / length);
     }
-    hannCache.set(length, window);
+    hannCache.set(length, taper);
   }
   return hannCache.get(length);
 }
@@ -112,35 +111,40 @@ export function fft(re, im) {
   }
 }
 
-// Averages Hann-windowed spectra of two-second segments that overlap by half.
+// Averages Hann-windowed spectra of segments that overlap by half. A segment is the first
+// power of two that holds two seconds of samples, or the most that fits a shorter window.
+// A very long window spreads MAX_SEGMENTS of them evenly instead.
 export function welch(samples, fs) {
-  let size = 2 ** Math.ceil(Math.log2(fs * 2));
-  while (size > samples.length) size /= 2;
-  if (size < 32) return null;
+  const wanted = 2 ** Math.ceil(Math.log2(fs * 2));
+  const size = 2 ** Math.floor(Math.log2(Math.min(wanted, samples.length)));
+  if (!(size >= 32)) return null;
 
-  const window = hann(size);
+  const taper = hann(size);
   const power = new Float64Array(size / 2 + 1);
   const re = new Float64Array(size);
   const im = new Float64Array(size);
-  let segments = 0;
+  const span = samples.length - size;
+  const overlapping = Math.floor(span / (size / 2)) + 1;
+  const segments = Math.min(overlapping, MAX_SEGMENTS);
+  const step = overlapping > MAX_SEGMENTS ? span / (MAX_SEGMENTS - 1) : size / 2;
 
-  for (let start = 0; start + size <= samples.length; start += size / 2) {
+  for (let segment = 0; segment < segments; segment += 1) {
+    const start = Math.round(segment * step);
     let mean = 0;
     for (let i = 0; i < size; i += 1) mean += samples[start + i];
     mean /= size;
     for (let i = 0; i < size; i += 1) {
-      re[i] = (samples[start + i] - mean) * window[i];
+      re[i] = (samples[start + i] - mean) * taper[i];
       im[i] = 0;
     }
     fft(re, im);
     for (let k = 0; k < power.length; k += 1) power[k] += re[k] * re[k] + im[k] * im[k];
-    segments += 1;
   }
   for (let k = 0; k < power.length; k += 1) power[k] /= segments;
   return { power, resolution: fs / size };
 }
 
-// Each band's share of 1 to 30 Hz power. Returns null for a flat signal.
+// Each band's share of the power across all the bands. Returns null for a flat signal.
 export function relativeBandPower({ power, resolution }) {
   const totals = BANDS.map(() => 0);
   for (let k = 0; k < power.length; k += 1) {
@@ -152,15 +156,20 @@ export function relativeBandPower({ power, resolution }) {
   return sum > 0 ? totals.map((value) => value / sum) : null;
 }
 
-// Averages shares across channels, so one loud channel cannot dominate.
+// Averages shares across channels, so one loud channel cannot dominate. With nothing to
+// measure, shares is null and reason says why.
 export function bandShares(channels, start, length) {
+  const eeg = channels.filter(isEeg);
+  const fast = eeg.filter(({ fs }) => fs >= MIN_SAMPLE_RATE);
   const shares = BANDS.map(() => 0);
+  let long = 0;
   let used = 0;
-  for (const channel of channels) {
-    if (channel.fs < MIN_SAMPLE_RATE || NON_EEG.test(channel.label)) continue;
+
+  for (const channel of fast) {
     const from = Math.floor(start * channel.fs);
     const to = Math.min(channel.data.length, Math.ceil((start + length) * channel.fs));
     const spectrum = welch(channel.data.subarray(from, to), channel.fs);
+    if (spectrum) long += 1;
     const relative = spectrum && relativeBandPower(spectrum);
     if (relative) {
       relative.forEach((value, i) => {
@@ -169,5 +178,15 @@ export function bandShares(channels, start, length) {
       used += 1;
     }
   }
-  return used > 0 ? { shares: shares.map((value) => value / used), channels: used } : null;
+
+  if (used > 0) {
+    return { shares: shares.map((value) => value / used), channels: used, reason: null };
+  }
+  const reasons = [
+    [eeg.length === 0, 'no-eeg'],
+    [fast.length === 0, 'slow'],
+    [long === 0, 'short'],
+    [true, 'flat'],
+  ];
+  return { shares: null, channels: 0, reason: reasons.find(([applies]) => applies)[1] };
 }

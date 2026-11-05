@@ -1,22 +1,40 @@
-// Reads EDF and EDF+ recordings. Header fields follow the rules of MNE's EDF reader,
-// so the Info section agrees with mne.io.read_raw_edf. They stay in the browser.
+// Reads EDF and EDF+ recordings. Most header fields follow MNE's EDF reader, so the Info
+// section usually matches mne.io.read_raw_edf. It parts from MNE in three places: a
+// six-part recording field still gives its date, free text stays whole, and a record
+// length of zero is an error rather than one second.
+//
+// cutoff() and the choice of filter in parseFilters() are adapted from MNE-Python
+// (mne/io/edf/edf.py), under the BSD 3-Clause license. See licenses/MNE-Python.txt.
 
 export class EdfError extends Error {}
 
 const HEADER_BYTES = 256;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-const decoder = new TextDecoder('latin1');
+const ANNOTATION_LABEL = 'EDF Annotations';
 
+// Anything past these is a damaged header rather than a recording.
+const MAX_SAMPLE_RATE = 1e6;
+const MAX_SECONDS = 1e9;
+
+const decoder = new TextDecoder('latin1');
+const annotationDecoder = new TextDecoder();
+
+// Some recorders pad fields with NUL rather than spaces, so a field ends at the first one.
 function text(bytes, start, length) {
-  return decoder.decode(bytes.subarray(start, start + length)).trim();
+  return decoder
+    .decode(bytes.subarray(start, start + length))
+    .split('\0', 1)[0]
+    .trim();
+}
+
+function damaged() {
+  return new EdfError('This EDF file has a damaged header.');
 }
 
 function number(bytes, start, length) {
   const raw = text(bytes, start, length).replace(',', '.');
   const value = raw === '' ? NaN : Number(raw);
-  if (!Number.isFinite(value)) {
-    throw new EdfError('This EDF file has a damaged header.');
-  }
+  if (!Number.isFinite(value)) throw damaged();
   return value;
 }
 
@@ -58,13 +76,23 @@ function clockTime(value) {
 }
 
 // EDF+ form: code, sex, birth date, name, then optional hand=, height= and weight=.
-// Plain EDF allows any text, which is kept whole rather than read as those fields.
+// Plain EDF allows any text, so whatever does not fit that form is kept whole.
 function parseSubject(field) {
   const parts = field.split(/\s+/);
   const subject = {
-    id: null, name: null, sex: null, birthday: null, hand: null, height: null, weight: null,
+    id: null,
+    name: null,
+    sex: null,
+    birthday: null,
+    hand: null,
+    height: null,
+    weight: null,
   };
-  if (parts.length < 4 || !/^[MFX]$/.test(parts[1])) return { ...subject, id: known(field) };
+  const fits =
+    parts.length >= 4 &&
+    /^[MFX]$/.test(parts[1]) &&
+    (parts[2] === 'X' || longDate(parts[2]) !== null);
+  if (!fits) return { ...subject, id: known(field) };
 
   const extras = Object.fromEntries(parts.slice(4).map((part) => part.split('=')));
   return {
@@ -102,12 +130,47 @@ function cutoff(prefilter, name) {
 
 // When channels differ, the strictest filter wins. With no lowpass, the limit is Nyquist.
 function parseFilters(prefilters, nyquist) {
-  const read = (name) => prefilters.map((text) => cutoff(text, name)).filter(Number.isFinite);
+  const read = (name) => prefilters.map((filter) => cutoff(filter, name)).filter(Number.isFinite);
   const highpass = Math.max(0, ...read('HP'));
   const lowest = Math.min(...read('LP'));
   const lowpass = Number.isFinite(lowest) && lowest > 0 ? lowest : nyquist;
   const notch = Math.max(0, ...read('N')) || null;
-  return highpass > lowpass ? { highpass: 0, lowpass: nyquist, notch } : { highpass, lowpass, notch };
+  return highpass > lowpass
+    ? { highpass: 0, lowpass: nyquist, notch }
+    : { highpass, lowpass, notch };
+}
+
+// A timed annotation list: +onset, an optional duration, then its texts, repeated in the
+// bytes of an annotation channel. 0x15 and 0x14 mark the parts, and zero bytes end each list.
+function parseTals(bytes) {
+  const tals = [];
+  for (const tal of annotationDecoder.decode(bytes).split('\0')) {
+    const [timing, ...texts] = tal.split('\x14');
+    const [onset, duration] = timing.split('\x15').map(Number);
+    if (/^[+-]/.test(timing) && Number.isFinite(onset)) {
+      tals.push({ onset, duration: duration || 0, texts: texts.filter(Boolean) });
+    }
+  }
+  return tals;
+}
+
+// The first list in a record stamps when that record began. Times here count from the
+// start of the data as shown, so gaps in the recording do not shift the annotations.
+function readAnnotations(bytes, slots, { headerBytes, recordBytes, records, recordSeconds }) {
+  const annotations = [];
+  for (let record = 0; record < records; record += 1) {
+    const recordStart = headerBytes + record * recordBytes;
+    let stamp = null;
+    for (const { offset, length } of slots) {
+      const from = recordStart + offset;
+      for (const { onset, duration, texts } of parseTals(bytes.subarray(from, from + length))) {
+        stamp ??= onset;
+        const time = record * recordSeconds + onset - stamp;
+        for (const text of texts) annotations.push({ time, duration, text });
+      }
+    }
+  }
+  return annotations.sort((a, b) => a.time - b.time);
 }
 
 export function parseEdf(buffer) {
@@ -131,9 +194,10 @@ export function parseEdf(buffer) {
   const validShape =
     Number.isInteger(signalCount) &&
     signalCount > 0 &&
+    Number.isInteger(declaredRecords) &&
     headerBytes === HEADER_BYTES * (signalCount + 1) &&
     bytes.length >= headerBytes;
-  if (!validShape) throw new EdfError('This EDF file has a damaged header.');
+  if (!validShape) throw damaged();
   if (recordSeconds <= 0) throw new EdfError('This file has no timed signal data.');
 
   // Header fields are stored column by column: every label, then every unit.
@@ -156,15 +220,15 @@ export function parseEdf(buffer) {
   const prefiltering = column(80, text);
   const samplesPerRecord = column(8, number);
 
-  if (samplesPerRecord.some((count) => !Number.isInteger(count) || count < 0)) {
-    throw new EdfError('This EDF file has a damaged header.');
-  }
+  if (samplesPerRecord.some((count) => !Number.isInteger(count) || count < 0)) throw damaged();
+  if (Math.max(...samplesPerRecord) / recordSeconds > MAX_SAMPLE_RATE) throw damaged();
   const recordBytes = 2 * samplesPerRecord.reduce((sum, count) => sum + count, 0);
   if (recordBytes === 0) throw new EdfError('This file has no signal data.');
 
   const available = Math.floor((bytes.length - headerBytes) / recordBytes);
   const records = declaredRecords >= 0 ? Math.min(declaredRecords, available) : available;
   if (records < 1) throw new EdfError('This file has no complete data records.');
+  if (records * recordSeconds > MAX_SECONDS) throw damaged();
 
   const warnings = [];
   if (declaredRecords > available) {
@@ -177,11 +241,14 @@ export function parseEdf(buffer) {
   const view = new DataView(buffer);
   const channels = [];
   const prefilters = [];
+  const annotationSlots = [];
   let offsetInRecord = 0;
 
   for (let i = 0; i < signalCount; i += 1) {
     const count = samplesPerRecord[i];
-    if (count > 0 && labels[i] !== 'EDF Annotations') {
+    if (labels[i] === ANNOTATION_LABEL) {
+      annotationSlots.push({ offset: offsetInRecord, length: 2 * count });
+    } else if (count > 0) {
       const digitalRange = digitalMax[i] - digitalMin[i];
       const scale = digitalRange === 0 ? 1 : (physicalMax[i] - physicalMin[i]) / digitalRange;
       const shift = physicalMin[i] - digitalMin[i] * scale;
@@ -217,6 +284,12 @@ export function parseEdf(buffer) {
     format: reserved.startsWith('EDF+') ? 'EDF+' : 'EDF',
     duration: records * recordSeconds,
     channels,
+    annotations: readAnnotations(bytes, annotationSlots, {
+      headerBytes,
+      recordBytes,
+      records,
+      recordSeconds,
+    }),
     warnings,
     info: {
       date: startDate,

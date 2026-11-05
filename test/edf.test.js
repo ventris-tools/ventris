@@ -1,63 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EdfError, parseEdf } from '../js/edf.js';
-
-const pad = (value, width) => String(value).padEnd(width, ' ');
-
-// Builds an EDF file from [{ label, samples, physical, digital, unit }].
-function buildEdf(
-  signals,
-  {
-    records = 2,
-    seconds = 1,
-    reserved = '',
-    declared = records,
-    subject = 'X X X X',
-    recording = 'Startdate X X X X',
-    date = '01.01.26',
-    time = '00.00.00',
-  } = {},
-) {
-  const n = signals.length;
-  const column = (width, pick) => signals.map((s) => pad(pick(s), width)).join('');
-  const header =
-    pad('0', 8) +
-    pad(subject, 80) +
-    pad(recording, 80) +
-    pad(date, 8) +
-    pad(time, 8) +
-    pad(256 * (n + 1), 8) +
-    pad(reserved, 44) +
-    pad(declared, 8) +
-    pad(seconds, 8) +
-    pad(n, 4) +
-    column(16, (s) => s.label) +
-    column(80, () => '') +
-    column(8, (s) => s.unit ?? 'uV') +
-    column(8, (s) => s.physical?.[0] ?? -100) +
-    column(8, (s) => s.physical?.[1] ?? 100) +
-    column(8, (s) => s.digital?.[0] ?? -1000) +
-    column(8, (s) => s.digital?.[1] ?? 1000) +
-    column(80, (s) => s.prefilter ?? '') +
-    column(8, (s) => s.samples) +
-    column(32, () => '');
-
-  const recordBytes = 2 * signals.reduce((sum, s) => sum + s.samples, 0);
-  const buffer = new ArrayBuffer(header.length + records * recordBytes);
-  new Uint8Array(buffer).set(new TextEncoder().encode(header));
-  const view = new DataView(buffer);
-  let at = header.length;
-  for (let record = 0; record < records; record += 1) {
-    signals.forEach((signal, channel) => {
-      for (let i = 0; i < signal.samples; i += 1) {
-        const value = signal.value ? signal.value(record, i, channel) : i;
-        view.setInt16(at, value, true);
-        at += 2;
-      }
-    });
-  }
-  return buffer;
-}
+import { buildEdf } from './support/edf.js';
 
 test('scales digital values to physical units', () => {
   const buffer = buildEdf([{ label: 'Cz', samples: 2, value: (r, i) => (i === 0 ? 1000 : -500) }]);
@@ -76,7 +20,10 @@ test('keeps channels apart when sample rates differ', () => {
       { label: 'Slow', samples: 1, value: () => 200 },
     ]),
   );
-  assert.deepEqual(recording.channels.map((c) => c.fs), [4, 1]);
+  assert.deepEqual(
+    recording.channels.map((c) => c.fs),
+    [4, 1],
+  );
   assert.equal(recording.channels[0].data.length, 8);
   assert.equal(recording.channels[1].data.length, 2);
   assert.ok(recording.channels[0].data.every((v) => Math.abs(v - 10) < 1e-4));
@@ -94,7 +41,10 @@ test('skips the EDF+ annotation channel and reads the signal after it', () => {
     ),
   );
   assert.equal(recording.format, 'EDF+');
-  assert.deepEqual(recording.channels.map((c) => c.label), ['O1']);
+  assert.deepEqual(
+    recording.channels.map((c) => c.label),
+    ['O1'],
+  );
   assert.ok(recording.channels[0].data.every((v) => Math.abs(v - 50) < 1e-4));
 });
 
@@ -115,7 +65,9 @@ const cz = [{ label: 'Cz', samples: 2 }];
 
 test('reads the EDF+ participant fields', () => {
   const { info } = parseEdf(
-    buildEdf(cz, { subject: 'MCH-0234567 F 02-MAY-1951 Haagse_Harry hand=1 height=1.75 weight=70' }),
+    buildEdf(cz, {
+      subject: 'MCH-0234567 F 02-MAY-1951 Haagse_Harry hand=1 height=1.75 weight=70',
+    }),
   );
   assert.deepEqual(info.subject, {
     id: 'MCH-0234567',
@@ -140,6 +92,20 @@ test('keeps free text in a plain EDF participant field whole', () => {
   const { info } = parseEdf(buildEdf(cz, { subject: 'Subject 12 at home visit' }));
   assert.equal(info.subject.id, 'Subject 12 at home visit');
   assert.equal(info.subject.sex, null);
+});
+
+test('keeps free text that only looks like the EDF+ form whole', () => {
+  const { info } = parseEdf(buildEdf(cz, { subject: 'John M Smith Jr' }));
+  assert.equal(info.subject.id, 'John M Smith Jr');
+  assert.equal(info.subject.sex, null);
+  assert.equal(info.subject.name, null);
+});
+
+test('reads the EDF+ form when the birth date is unknown', () => {
+  const { info } = parseEdf(buildEdf(cz, { subject: 'P7 F X Ann_Lee' }));
+  assert.equal(info.subject.id, 'P7');
+  assert.equal(info.subject.sex, 'Female');
+  assert.equal(info.subject.name, 'Ann Lee');
 });
 
 test('reads the EDF+ recording field', () => {
@@ -173,7 +139,8 @@ test('reads two-digit years from 1985 and rejects impossible dates', () => {
 
 test('reads filters and falls back to Nyquist', () => {
   const filtersOf = (...prefilters) =>
-    parseEdf(buildEdf(prefilters.map((prefilter) => ({ label: 'Cz', samples: 200, prefilter })))).info;
+    parseEdf(buildEdf(prefilters.map((prefilter) => ({ label: 'Cz', samples: 200, prefilter }))))
+      .info;
 
   const set = filtersOf('HP:0.1Hz LP:75Hz N:50Hz');
   assert.deepEqual([set.highpass, set.lowpass, set.notch], [0.1, 75, 50]);
@@ -199,7 +166,9 @@ test('keeps the strictest filter when channels differ', () => {
 });
 
 test('ignores a highpass above the lowpass', () => {
-  const { info } = parseEdf(buildEdf([{ label: 'Cz', samples: 200, prefilter: 'HP:90Hz LP:40Hz' }]));
+  const { info } = parseEdf(
+    buildEdf([{ label: 'Cz', samples: 200, prefilter: 'HP:90Hz LP:40Hz' }]),
+  );
   assert.deepEqual([info.highpass, info.lowpass], [0, 100]);
 });
 
@@ -228,4 +197,68 @@ test('rejects a damaged header', () => {
   const buffer = buildEdf([{ label: 'Cz', samples: 2 }]);
   new Uint8Array(buffer).set(new TextEncoder().encode('abcd    '), 184);
   assert.throws(() => parseEdf(buffer), /damaged/);
+});
+
+test('reads fields padded with NUL rather than spaces', () => {
+  const recording = parseEdf(buildEdf([{ label: 'Cz', samples: 2 }], { fill: '\0' }));
+  assert.equal(recording.duration, 2);
+  assert.equal(recording.channels[0].data.length, 4);
+});
+
+test('rejects sample rates and lengths no recording could have', () => {
+  const cut = (options) => () => parseEdf(buildEdf(cz, options));
+  assert.throws(cut({ seconds: '1e-320' }), /damaged/);
+  assert.throws(cut({ seconds: '1e-9' }), /damaged/);
+  assert.throws(cut({ seconds: '1e300' }), /damaged/);
+  assert.throws(cut({ declared: '1.5' }), /damaged/);
+});
+
+const annotations = (texts) => ({
+  label: 'EDF Annotations',
+  samples: 32,
+  tal: (record) => texts[record],
+});
+
+test('reads EDF+ annotations with their times and durations', () => {
+  const { annotations: found } = parseEdf(
+    buildEdf(
+      [
+        { label: 'Cz', samples: 2 },
+        annotations([
+          '+0\x14\x14\0+0.5\x14Eyes closed\x14\0',
+          '+1\x14\x14\0+1.5\x152\x14T1\x14T2\x14\0',
+        ]),
+      ],
+      { reserved: 'EDF+C' },
+    ),
+  );
+  assert.deepEqual(found, [
+    { time: 0.5, duration: 0, text: 'Eyes closed' },
+    { time: 1.5, duration: 2, text: 'T1' },
+    { time: 1.5, duration: 2, text: 'T2' },
+  ]);
+});
+
+test('times annotations from the data as shown when the recording has gaps', () => {
+  const { annotations: found } = parseEdf(
+    buildEdf(
+      [
+        { label: 'Cz', samples: 2 },
+        annotations(['+10\x14\x14\0', '+100\x14\x14\0+100.25\x14Spike\x14\0']),
+      ],
+      { reserved: 'EDF+D' },
+    ),
+  );
+  assert.deepEqual(found, [{ time: 1.25, duration: 0, text: 'Spike' }]);
+});
+
+test('reads annotations as UTF-8', () => {
+  const { annotations: found } = parseEdf(
+    buildEdf([{ label: 'Cz', samples: 2 }, annotations(['+0\x14\x14\0+0\x14µ-Welle\x14\0', ''])]),
+  );
+  assert.equal(found[0].text, 'µ-Welle');
+});
+
+test('a plain EDF file has no annotations', () => {
+  assert.deepEqual(parseEdf(buildEdf(cz)).annotations, []);
 });
