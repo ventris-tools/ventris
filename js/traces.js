@@ -115,7 +115,7 @@ export class TraceView {
   }
 
   labelFont() {
-    return '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    return '12px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
   }
 
   schedule() {

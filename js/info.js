@@ -73,7 +73,7 @@ export function timeRows({ unit, mean, deviation, minimum, maximum, quietest, lo
     ['Minimum', amount(minimum, unit)],
     ['Maximum', amount(maximum, unit)],
     ['Peak to peak', amount(maximum - minimum, unit)],
-    ['Standard deviation', amount(deviation, unit)],
+    ['Std deviation', amount(deviation, unit)],
     ...optional('Lowest SD', channel(quietest)),
     ...optional('Highest SD', channel(loudest)),
     ['Flat channels', String(flat)],

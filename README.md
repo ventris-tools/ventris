@@ -35,6 +35,12 @@ npm test
 | `js/traces.js` | Draws the traces and handles scrolling |
 | `js/app.js` | Connects the interface |
 
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you reuse code from another project.
+
 ## License
 
 BSD 3-Clause. See [LICENSE](LICENSE).
+
+The app uses [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), hosted here so that it makes no third-party requests. The font is under the SIL Open Font License. See [fonts/OFL.txt](fonts/OFL.txt).

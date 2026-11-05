@@ -269,3 +269,6 @@ window.addEventListener('drop', (event) => {
 });
 
 openLoader();
+
+// A canvas keeps whatever font it was drawn with, so redraw once the real one arrives.
+document.fonts.ready.then(() => view.resize());
