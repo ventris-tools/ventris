@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- This policy is the privacy promise: the browser refuses any network connection from the app. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="color-scheme" content="light dark">
+  <title>Ventris · EEG decoding in your browser</title>
+  <meta name="description" content="Open an EEG recording and explore its signals and frequency bands. Everything runs in your browser, so your recordings never leave your computer.">
+  <meta property="og:title" content="Ventris">
+  <meta property="og:description" content="EEG decoding in your browser. Your recordings never leave your computer.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <noscript><p class="error">Ventris runs entirely in your browser, so it needs JavaScript.</p></noscript>
+
+  <main class="viewer" id="viewer" hidden>
+    <aside class="panel panel-controls" aria-label="Controls">
+      <a class="brand" href="./">
+        <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+          <circle class="brand-disc" cx="16" cy="16" r="14"/>
+          <path class="brand-v" d="M9 11.5 16 23l7-11.5"/>
+        </svg>
+        <span>Ventris</span>
+      </a>
+
+      <button class="button open-recording" id="open-recording" type="button">Open a recording</button>
+
+      <label class="control">
+        <span>Window</span>
+        <select id="window"></select>
+      </label>
+
+      <div class="control" role="group" aria-labelledby="size-label">
+        <span id="size-label">Trace size</span>
+        <div class="stepper">
+          <button class="button" id="gain-down" type="button" aria-label="Smaller traces">−</button>
+          <button class="button" id="gain-up" type="button" aria-label="Larger traces">+</button>
+        </div>
+      </div>
+
+      <p class="disclaimer">Research tool, not a medical device.</p>
+    </aside>
+
+    <section class="trace-panel" aria-label="EEG traces">
+      <div class="trace-frame"><canvas id="traces" role="img"></canvas></div>
+      <p class="readout" id="readout" aria-live="off"></p>
+      <label class="position">
+        <span class="visually-hidden">Position in the recording</span>
+        <input id="position" type="range" min="0" step="0.1" value="0">
+        <output id="position-text"></output>
+      </label>
+    </section>
+
+    <aside class="panel panel-info" aria-label="Recording details">
+      <div class="recording-title">
+        <h1 id="recording-name"></h1>
+        <p class="note" id="recording-note" hidden></p>
+      </div>
+
+      <details class="section" open>
+        <summary><h2>Info</h2></summary>
+        <h3>General</h3>
+        <dl class="properties" id="info-general"></dl>
+        <h3>Acquisition</h3>
+        <dl class="properties" id="info-acquisition"></dl>
+        <h3>Channels</h3>
+        <dl class="properties" id="info-channels"></dl>
+        <dl class="channel-list">
+          <dt>Channel names</dt>
+          <dd id="channel-names"></dd>
+        </dl>
+        <h3>Filters</h3>
+        <dl class="properties" id="info-filters"></dl>
+      </details>
+
+      <details class="section">
+        <summary><h2>Time domain</h2></summary>
+        <dl class="properties" id="time-rows"></dl>
+        <p class="section-note" id="time-note"></p>
+        <p class="section-note">Each channel is scaled on its own, so compare shapes rather than heights.</p>
+      </details>
+
+      <details class="section">
+        <summary><h2>Frequency bands</h2></summary>
+        <table>
+          <caption class="visually-hidden">Share of signal power in each frequency band</caption>
+          <tbody id="band-rows"></tbody>
+        </table>
+        <p class="section-note" id="band-note"></p>
+      </details>
+    </aside>
+  </main>
+
+  <dialog class="loader" id="loader" aria-labelledby="loader-title">
+    <div class="loader-head">
+      <h2 id="loader-title">
+        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+          <circle class="brand-disc" cx="16" cy="16" r="14"/>
+          <path class="brand-v" d="M9 11.5 16 23l7-11.5"/>
+        </svg>
+        Open a recording
+      </h2>
+      <button class="button close" id="close-loader" type="button" aria-label="Close" hidden>×</button>
+    </div>
+    <button class="dropzone" id="choose-file" type="button" autofocus>
+      <strong id="choose-label">Choose an EDF file</strong>
+      <span>or drop it here</span>
+    </button>
+    <input id="file-input" type="file" accept=".edf" hidden>
+    <p class="error" id="error" role="alert" hidden></p>
+    <p class="loader-note">Your recordings never leave your computer.</p>
+    <div class="loader-demo">
+      <span>No recording to hand?</span>
+      <button class="button" id="show-demo" type="button">Try the demo</button>
+    </div>
+  </dialog>
+</body>
+</html>

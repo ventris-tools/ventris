@@ -1,0 +1,402 @@
+:root {
+  color-scheme: light;
+  --paper: #f7f3ea;
+  --surface: #fffdf8;
+  --ink: #211c17;
+  --ink-2: #5b5248;
+  --line: #e0d8c8;
+  --grid: #ece5d6;
+  --trace: #2d2721;
+  --accent: #2b6cb8;
+  --on-accent: #ffffff;
+  --error: #9b2c1c;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #171411;
+    --surface: #1f1b17;
+    --ink: #f2ece1;
+    --ink-2: #c4b9a8;
+    --line: #3a332b;
+    --grid: #2d2822;
+    --trace: #e9e1d3;
+    --accent: #6ea8ec;
+    --on-accent: #0d1520;
+    --error: #f0a08c;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.5 var(--sans);
+}
+
+body.dropping { outline: 3px dashed var(--accent); outline-offset: -8px; }
+
+h1, h2, h3, p { margin: 0; }
+
+a { color: inherit; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.viewer {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) 232px;
+  height: 100vh;
+}
+
+.trace-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.trace-frame {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-x: none;
+}
+
+canvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
+
+.readout {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 0.8rem/1.6 var(--mono);
+  pointer-events: none;
+}
+
+.readout:empty { display: none; }
+
+.position {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding-inline: 12px;
+  border-top: 1px solid var(--line);
+}
+
+input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+output { color: var(--ink-2); font: 0.8rem/1 var(--mono); white-space: nowrap; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.panel-controls { border-right: 1px solid var(--line); }
+
+.panel-info { gap: 0; border-left: 1px solid var(--line); }
+
+.recording-title { padding-bottom: 10px; }
+
+.section { border-top: 1px solid var(--line); }
+
+.section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.section > summary::-webkit-details-marker { display: none; }
+
+/* A chevron that points right when closed and down when open. */
+.section > summary::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border-right: 1.5px solid var(--ink-2);
+  border-bottom: 1.5px solid var(--ink-2);
+  transform: rotate(-45deg);
+}
+
+.section[open] > summary::after { transform: translateY(-2px) rotate(45deg); }
+
+.section[open] { padding-bottom: 12px; }
+
+h3 {
+  margin: 10px 0 3px;
+  color: var(--ink-2);
+  font: 500 0.72rem/1.4 var(--sans);
+}
+
+.section > summary + h3 { margin-top: 0; }
+
+.channel-list { margin: 2px 0 0; }
+
+.channel-list dt { color: var(--ink-2); font-size: 0.82rem; }
+
+.channel-list dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  font: 0.7rem/1.4 var(--mono);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 1rem/1 var(--serif);
+  text-decoration: none;
+}
+
+.brand-disc { fill: var(--accent); }
+.brand-v {
+  fill: none;
+  stroke: var(--on-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+h1 {
+  overflow-wrap: anywhere;
+  font: 500 1.05rem/1.3 var(--serif);
+}
+
+.properties { display: grid; gap: 2px; margin: 0; }
+
+/* A value too long for its row drops to the next line, still on the right. */
+.properties div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; }
+
+.properties dt { color: var(--ink-2); font-size: 0.82rem; }
+
+.properties dd {
+  min-width: 0;
+  margin: 0 0 0 auto;
+  overflow-wrap: anywhere;
+  font: 0.82rem/1.5 var(--mono);
+  text-align: right;
+}
+
+.note { margin-top: 6px; color: var(--ink-2); font-size: 0.82rem; line-height: 1.45; }
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 0.8rem;
+}
+
+select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 0.9rem var(--sans);
+}
+
+.button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 0.95rem/1 var(--sans);
+  cursor: pointer;
+}
+
+.button:hover { border-color: var(--ink-2); }
+
+.open-recording { min-height: 34px; padding: 0 10px; font-size: 0.85rem; }
+
+.stepper { display: flex; gap: 6px; }
+.stepper .button { flex: 1; min-height: 34px; padding: 0; font-size: 1.05rem; }
+
+h2 { font: 500 1rem/1.3 var(--serif); }
+
+table { width: 100%; margin-top: 6px; border-collapse: collapse; }
+
+th {
+  width: 78px;
+  padding: 5px 8px 5px 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+th span {
+  display: block;
+  color: var(--ink-2);
+  font: 0.7rem/1.3 var(--mono);
+  white-space: nowrap;
+}
+
+.bar-cell { padding-block: 5px; }
+
+.bar {
+  --share: 0;
+  display: block;
+  width: calc(var(--share) * 100%);
+  min-width: 2px;
+  height: 10px;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent);
+}
+
+.value {
+  width: 42px;
+  padding-left: 6px;
+  font: 0.85rem/1 var(--mono);
+  text-align: right;
+}
+
+.section-note { margin-top: 8px; color: var(--ink-2); font-size: 0.78rem; line-height: 1.45; }
+
+.disclaimer { margin-top: auto; color: var(--ink-2); font-size: 0.78rem; }
+
+.error { margin-top: 12px; color: var(--error); font-weight: 500; }
+
+noscript .error { margin: 16px; }
+
+.loader {
+  width: min(480px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.loader::backdrop { background: rgb(23 20 17 / 0.45); }
+
+/* Nothing is open behind the first dialog, so there is nothing to dim. */
+.viewer[hidden] + .loader::backdrop { background: transparent; }
+
+.loader-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 36px;
+}
+
+.loader-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.3rem;
+}
+
+.close { width: 36px; min-height: 36px; padding: 0; font-size: 1.2rem; }
+
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 44px 16px;
+  border: 1px dashed var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dropzone:hover, .dropping .dropzone { border-color: var(--accent); }
+
+.dropping .dropzone { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.dropzone:disabled { cursor: progress; opacity: 0.7; }
+
+.dropzone strong { font-weight: 500; }
+
+.dropzone span { color: var(--ink-2); font-size: 0.9rem; }
+
+.loader-note { margin-top: 12px; color: var(--ink-2); font-size: 0.9rem; }
+
+.loader-demo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
+
+@media (hover: none) {
+  .dropzone span { display: none; }
+}
+
+/* Too narrow for side panels: controls on top, traces, then details. */
+@media (max-width: 960px) {
+  .viewer { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .trace-frame { flex: none; height: 70vh; }
+  .position { height: 44px; }
+  .panel { border-inline: 0; }
+  .panel-info { border-top: 1px solid var(--line); }
+  .section > summary { min-height: 44px; }
+
+  .panel-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-controls .brand { flex: 1 1 calc(100% - 152px); }
+  .open-recording { flex: none; width: 140px; }
+  .panel-controls .control { flex: 1 1 40%; }
+  .disclaimer { flex: 1 1 100%; margin-top: 0; }
+}
