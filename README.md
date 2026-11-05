@@ -42,6 +42,14 @@ npm run lint
 npm run format:check
 ```
 
+`npm run coverage` fails if coverage falls below the floors in `package.json`. Raise the floors when coverage improves, so that it can't slip back.
+
+## Deploy
+
+Changes reach `main` through pull requests, which need the `test` check in [ci.yml](.github/workflows/ci.yml) to pass. Each merge then publishes to GitHub Pages.
+
+Only the files the app needs are published. A new top-level file has to be added to the list in that workflow.
+
 ## Layout
 
 | File | Purpose |

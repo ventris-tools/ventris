@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInThisContext } from 'node:vm';
 import { installDom } from './support/dom.js';
 
 const KEY = 'ventris-theme';
-let run = 0;
+const script = new URL('../js/theme.js', import.meta.url);
+const source = readFileSync(script, 'utf8');
 
-// Runs theme.js on a new page, the way the head of index.html does.
-async function load({ dark = false, stored = null, refuse = false } = {}) {
+// Runs theme.js on a new page as a plain script, the way the head of index.html does. Importing
+// it once per page would count every import as a separate file in the coverage total.
+function load({ dark = false, stored = null, refuse = false } = {}) {
   const window = installDom();
   const { document } = window;
   const saved = new Map(stored === null ? [] : [[KEY, stored]]);
@@ -29,8 +33,7 @@ async function load({ dark = false, stored = null, refuse = false } = {}) {
     writable: true,
   });
 
-  run += 1;
-  await import(`../js/theme.js?run=${run}`);
+  runInThisContext(source, { filename: script.href });
   document.dispatchEvent(new window.Event('DOMContentLoaded'));
 
   return {
@@ -45,22 +48,22 @@ async function load({ dark = false, stored = null, refuse = false } = {}) {
   };
 }
 
-test('follows the system until someone chooses', async () => {
-  assert.equal((await load({ dark: true })).theme(), 'dark');
-  assert.equal((await load({ dark: false })).theme(), 'light');
+test('follows the system until someone chooses', () => {
+  assert.equal(load({ dark: true }).theme(), 'dark');
+  assert.equal(load({ dark: false }).theme(), 'light');
 });
 
-test('a remembered choice beats the system', async () => {
-  assert.equal((await load({ dark: true, stored: 'light' })).theme(), 'light');
-  assert.equal((await load({ dark: false, stored: 'dark' })).theme(), 'dark');
+test('a remembered choice beats the system', () => {
+  assert.equal(load({ dark: true, stored: 'light' }).theme(), 'light');
+  assert.equal(load({ dark: false, stored: 'dark' }).theme(), 'dark');
 });
 
-test('ignores a remembered value that is not a theme', async () => {
-  assert.equal((await load({ dark: true, stored: 'purple' })).theme(), 'dark');
+test('ignores a remembered value that is not a theme', () => {
+  assert.equal(load({ dark: true, stored: 'purple' }).theme(), 'dark');
 });
 
-test('the switch changes the theme and remembers it', async () => {
-  const page = await load();
+test('the switch changes the theme and remembers it', () => {
+  const page = load();
   page.toggle();
   assert.equal(page.theme(), 'dark');
   assert.equal(page.saved.get(KEY), 'dark');
@@ -69,22 +72,22 @@ test('the switch changes the theme and remembers it', async () => {
   assert.equal(page.saved.get(KEY), 'light');
 });
 
-test('a click on the icon inside the switch counts', async () => {
-  const page = await load();
+test('a click on the icon inside the switch counts', () => {
+  const page = load();
   const icon = page.document.querySelector('.theme-toggle svg');
   icon.dispatchEvent(new page.document.defaultView.MouseEvent('click', { bubbles: true }));
   assert.equal(page.theme(), 'dark');
 });
 
-test('other clicks leave the theme alone', async () => {
-  const page = await load();
+test('other clicks leave the theme alone', () => {
+  const page = load();
   page.document.body.click();
   assert.equal(page.theme(), 'light');
   assert.equal(page.saved.size, 0);
 });
 
-test('every switch names the theme it leads to', async () => {
-  const page = await load();
+test('every switch names the theme it leads to', () => {
+  const page = load();
   const labels = () =>
     [...page.document.querySelectorAll('.theme-toggle')].map((button) => [
       button.title,
@@ -104,8 +107,8 @@ test('every switch names the theme it leads to', async () => {
   );
 });
 
-test('follows a change in the system only until someone chooses', async () => {
-  const page = await load();
+test('follows a change in the system only until someone chooses', () => {
+  const page = load();
   page.systemChanges(true);
   assert.equal(page.theme(), 'dark');
   page.toggle();
@@ -114,8 +117,8 @@ test('follows a change in the system only until someone chooses', async () => {
   assert.equal(page.theme(), 'light');
 });
 
-test('still switches when the browser refuses storage', async () => {
-  const page = await load({ dark: true, refuse: true });
+test('still switches when the browser refuses storage', () => {
+  const page = load({ dark: true, refuse: true });
   assert.equal(page.theme(), 'dark');
   page.toggle();
   assert.equal(page.theme(), 'light');

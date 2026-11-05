@@ -18,3 +18,12 @@ Put a copied license in `licenses/`, and name it in a comment beside the code, a
 This rule covers code. You can still write your own version from a published paper or a format specification.
 
 Fonts and other assets keep their own licenses. Put the license file next to the asset and mention it in the README, as `fonts/OFL.txt` does for JetBrains Mono.
+
+## Keeping recordings private
+
+The README promises that a recording never leaves the computer. Two checks protect that promise:
+
+- ESLint rejects network calls and navigation in `js/`.
+- `test/privacy.test.js` fails if the Content Security Policy in `index.html` changes.
+
+These catch mistakes, not deliberate workarounds, so review changes to them with care. If a change really needs one of them relaxed, update the README's promise in the same pull request.
