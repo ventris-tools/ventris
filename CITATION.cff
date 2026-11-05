@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: If you use Ventris in your research, please cite it as below.
+type: software
+title: Ventris
+abstract: >-
+  Ventris opens EDF recordings in the browser to explore their signals,
+  annotations and frequency bands. Everything runs in the browser, so
+  recordings never leave the computer.
+authors:
+  - given-names: Bhargav
+    family-names: Kowshik
+version: 0.1.0
+date-released: 2026-11-05
+license: BSD-3-Clause
+repository-code: https://github.com/ventris-tools/ventris
+url: https://ventris-tools.github.io/ventris/
+keywords:
+  - EEG
+  - EDF
+  - neuroscience
+  - signal processing
