@@ -41,11 +41,20 @@ const press = (target, key) =>
     new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
   );
 
-test('starts on the dialog with nothing behind it', () => {
-  assert.equal($('loader').open, true);
-  assert.equal($('viewer').hidden, true);
-  assert.equal($('close-loader').hidden, true);
-  assert.match(document.querySelector('.loader-intro').textContent, /EEG recording/);
+test('opens straight on the demo, with no dialog in the way', () => {
+  assert.equal($('loader').open, false);
+  assert.equal($('viewer').hidden, false);
+  assert.equal($('recording-name').textContent, 'Demo (synthetic data)');
+});
+
+test('opens the demo where a blink and the eyes closing share the first screen', () => {
+  assert.equal($('position-text').textContent, '0:13 to 0:23');
+});
+
+test('says what Ventris is and that recordings stay on the computer', () => {
+  const pitch = document.querySelector('.panel-controls .pitch').textContent;
+  assert.match(pitch, /EEG recording/);
+  assert.match(pitch, /never leave your computer/);
 });
 
 test('offers the theme switch and GitHub link on the dialog and in the viewer', () => {
@@ -71,16 +80,17 @@ test('every icon in use is defined on the page', () => {
   for (const href of uses) assert.ok(document.querySelector(`symbol${href}`), href);
 });
 
-test('the dialog stays open until something has been opened', () => {
-  $('loader').close();
+test('the dialog opens on request and can always be closed', () => {
+  $('open-recording').click();
   assert.equal($('loader').open, true);
+  assert.equal($('close-loader').hidden, false);
+  $('close-loader').click();
+  assert.equal($('loader').open, false);
 });
 
 test('says plainly that the demo is synthetic', () => {
-  $('show-demo').click();
-  assert.equal($('loader').open, false);
-  assert.equal($('viewer').hidden, false);
-  assert.equal($('recording-name').textContent, 'Demo (synthetic data)');
+  assert.equal($('demo-flag').hidden, false);
+  assert.match($('demo-flag').textContent, /synthetic demo/);
   assert.match($('recording-note').textContent, /not a real recording/);
   assert.equal($('recording-note').hidden, false);
 });
@@ -113,6 +123,19 @@ test('keeps the fraction of an annotation that falls between seconds', async () 
   assert.equal($('annotation-list').textContent, '0:01.5 Spike');
   $('open-recording').click();
   $('show-demo').click();
+});
+
+test('offers the demo only while something else is open', async () => {
+  $('open-recording').click();
+  assert.equal($('demo-offer').hidden, true);
+  $('close-loader').click();
+  await open('night.edf');
+  assert.equal($('demo-flag').hidden, true);
+  $('open-recording').click();
+  assert.equal($('demo-offer').hidden, false);
+  $('show-demo').click();
+  assert.equal($('demo-flag').hidden, false);
+  assert.equal($('position-text').textContent, '0:13 to 0:23');
 });
 
 test('moves through time from the keyboard', () => {

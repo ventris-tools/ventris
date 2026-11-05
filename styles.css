@@ -309,6 +309,8 @@ select {
 
 .open-recording { min-height: 34px; padding: 0 8px; font-size: 0.78rem; white-space: nowrap; }
 
+.pitch { color: var(--ink-2); font-size: 0.78rem; line-height: 1.45; }
+
 .stepper { display: flex; gap: 6px; }
 .stepper .button { flex: 1; min-height: 34px; padding: 0; font-size: 1.05rem; }
 
@@ -390,9 +392,6 @@ noscript .error { margin: 16px; }
 
 .loader::backdrop { background: rgb(23 20 17 / 0.45); }
 
-/* Nothing is open behind the first dialog, so there is nothing to dim. */
-.viewer[hidden] + .loader::backdrop { background: transparent; }
-
 .loader-head {
   display: flex;
   align-items: center;
@@ -439,8 +438,6 @@ noscript .error { margin: 16px; }
 
 .dropzone span { color: var(--ink-2); font-size: 0.9rem; }
 
-.loader-intro { margin-top: 8px; color: var(--ink-2); font-size: 0.9rem; }
-
 .loader-note { margin-top: 12px; color: var(--ink-2); font-size: 0.9rem; }
 
 .loader-demo {
@@ -486,5 +483,5 @@ noscript .error { margin: 16px; }
   .loader-head .github-link, .loader-head .theme-toggle { width: 40px; height: 44px; }
   .open-recording { flex: none; width: 140px; }
   .panel-controls .control { flex: 1 1 40%; }
-  .scale-note, .disclaimer { flex: 1 1 100%; margin-top: 0; }
+  .pitch, .scale-note, .disclaimer { flex: 1 1 100%; margin-top: 0; }
 }

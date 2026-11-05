@@ -1,4 +1,4 @@
-import { demoRecording } from './demo.js';
+import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
 import { amount, count, decimalsFor, formatClock } from './format.js';
@@ -27,6 +27,8 @@ const closeButton = $('close-loader');
 const chooseButton = $('choose-file');
 const chooseLabel = $('choose-label');
 const demoButton = $('show-demo');
+const demoOffer = $('demo-offer');
+const demoFlag = $('demo-flag');
 const fileInput = $('file-input');
 const errorBox = $('error');
 const nameHeading = $('recording-name');
@@ -198,11 +200,13 @@ function formatWindow(seconds, duration) {
   return seconds < 120 ? `${seconds} s` : formatClock(seconds);
 }
 
-function show(recording, name) {
+function show(recording, name, start = 0) {
   state.recording = recording;
   viewer.hidden = false;
-  state.start = 0;
+  state.start = start;
   state.gain = 1;
+  demoFlag.hidden = recording.format !== 'Synthetic';
+  demoOffer.hidden = !demoFlag.hidden;
   updateGainButtons();
   nameHeading.textContent = name;
   showDetails(recording);
@@ -222,13 +226,16 @@ function show(recording, name) {
   setWindow(preferred);
 }
 
+function showDemo() {
+  show(demoRecording(), DEMO_NAME, DEMO_START);
+}
+
 function setError(message) {
   errorBox.textContent = message;
   errorBox.hidden = !message;
 }
 
 function openLoader() {
-  closeButton.hidden = !state.recording;
   if (!loader.open) loader.showModal();
 }
 
@@ -270,16 +277,12 @@ openButton.addEventListener('click', () => {
   openLoader();
 });
 closeButton.addEventListener('click', () => loader.close());
-// Until something is open there is nothing to go back to, so the dialog stays.
-loader.addEventListener('close', () => {
-  if (!state.recording) openLoader();
-});
 chooseButton.addEventListener('click', () => fileInput.click());
 demoButton.addEventListener('click', () => {
   openRequest += 1;
   stopReading();
   setError('');
-  show(demoRecording(), DEMO_NAME);
+  showDemo();
   loader.close();
 });
 fileInput.addEventListener('change', () => {
@@ -356,7 +359,7 @@ window.addEventListener('drop', (event) => {
   if (file) openFile(file);
 });
 
-openLoader();
+showDemo();
 
 // A canvas keeps whatever font it was drawn with, so redraw once the real one arrives.
 document.fonts.ready.then(() => view.resize());
