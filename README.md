@@ -2,6 +2,8 @@
 
 EEG decoding in your browser.
 
+Use it at <https://ventris-tools.github.io/ventris/>.
+
 Open an EDF recording to explore its signals and frequency bands. Everything runs in your browser, so your recordings never leave your computer. The page's Content Security Policy blocks the app from opening network connections, and the app has no code that sends a recording anywhere.
 
 This is an early preview, and live streaming from EEG headsets is the next goal. Ventris is a research tool, not a medical device.
