@@ -1,9 +1,12 @@
-name: Test
+name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -18,3 +21,30 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run coverage
+      - name: Build the site
+        run: mkdir _site && cp -R index.html styles.css favicon.svg js fonts LICENSE licenses _site/
+      - name: Check that the site has every file the page links to
+        working-directory: _site
+        run: grep -oE '(src|href)="[^"#:]+"' index.html | cut -d'"' -f2 | xargs ls > /dev/null
+      - uses: actions/upload-pages-artifact@v5
+        if: github.event_name == 'push'
+        with:
+          path: _site
+
+  # Runs only after the checks pass, so a failing commit can't reach the live site.
+  deploy:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
