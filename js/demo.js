@@ -1,10 +1,13 @@
-// A synthetic recording for anyone with no EDF file to hand. Alpha rhythm grows at the
-// back of the head between 20 and 40 seconds, which is what closing your eyes does. It
-// contains no real person's data, and says so wherever a real file shows its details.
+// The synthetic recording that Ventris opens on. Alpha rhythm grows at the back of the
+// head between 20 and 40 seconds, which is what closing your eyes does. It contains no
+// real person's data, and says so wherever a real file shows its details.
 
 const SAMPLE_RATE = 256;
 const SECONDS = 60;
 const BLINKS = [6, 14, 47, 55];
+
+// Where the viewer opens, so that a blink and the eyes closing share the first screen.
+export const DEMO_START = 13;
 
 // Label, closeness to the back of the head, closeness to the eyes.
 const MONTAGE = [
