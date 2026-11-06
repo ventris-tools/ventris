@@ -11,6 +11,11 @@ await import('../js/app.js');
 const $ = (id) => document.getElementById(id);
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+// For work that takes as long as the machine makes it, which no fixed wait can cover.
+async function until(ready) {
+  for (let tries = 0; tries < 500 && !ready(); tries += 1) await wait(10);
+}
+
 function drop(file) {
   const event = new window.Event('drop', { cancelable: true });
   event.dataTransfer = { types: ['Files'], files: [file] };
@@ -171,8 +176,9 @@ test('offers the demo only while something else is open', async () => {
 });
 
 test('captions the bands and the time figures with what they cover', async () => {
-  await wait(80);
-  assert.equal($('band-note').textContent, '1 to 30 Hz · 8 EEG channels');
+  const caption = '1 to 30 Hz · 8 EEG channels';
+  await until(() => $('band-note').textContent === caption);
+  assert.equal($('band-note').textContent, caption);
   assert.equal($('time-note').textContent, 'Whole file · 8 EEG channels');
 });
 
