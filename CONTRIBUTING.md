@@ -46,6 +46,8 @@ npm run format:check
 | `js/theme.js` | Sets the light or dark theme and remembers the choice in the browser |
 | `js/app.js` | Connects the interface |
 
+`index.html` preloads the modules so that the browser fetches them together. A new module has to be added there, and a test fails until it is.
+
 ## Deploy
 
 Changes reach `main` through pull requests, which need the `test` check in [ci.yml](.github/workflows/ci.yml) to pass. Each merge then publishes to GitHub Pages.
@@ -58,6 +60,20 @@ Only the files the app needs are published. A new top-level file has to be added
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --user-data-dir="$(mktemp -d)" --window-size=1440,900 --force-device-scale-factor=2 --blink-settings=preferredColorScheme=1 --virtual-time-budget=4000 --screenshot="$PWD/docs/screenshot.png" http://localhost:4173
+```
+
+## Update the fonts
+
+`fonts/` holds JetBrains Mono cut down to Latin and Greek, without its ligatures and alternate letters, which makes it about a fifth of the size. Other scripts fall back to the system's monospace font.
+
+To change that, install the tool, then run this on the TTF files from a [JetBrains Mono release](https://github.com/JetBrains/JetBrainsMono/releases), once for Regular and once for Medium.
+
+```bash
+pip install "fonttools[woff]"
+```
+
+```bash
+pyftsubset JetBrainsMono-Regular.ttf --flavor=woff2 --unicodes="U+0020-007E,U+00A0-017F,U+0370-03FF,U+2010-2027,U+2030-205E,U+20AC,U+2190-2193,U+2212,U+2248,U+2260,U+2264,U+2265" --layout-features="kern,mark,mkmk" --output-file=fonts/JetBrainsMono-Regular.woff2
 ```
 
 ## Reusing outside code

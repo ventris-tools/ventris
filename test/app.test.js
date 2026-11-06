@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
 import test from 'node:test';
 import { buildEdf } from './support/edf.js';
 import { installDom } from './support/dom.js';
@@ -78,6 +79,15 @@ test('every icon in use is defined on the page', () => {
   const uses = [...document.querySelectorAll('use')].map((use) => use.getAttribute('href'));
   assert.ok(uses.length >= 6);
   for (const href of uses) assert.ok(document.querySelector(`symbol${href}`), href);
+});
+
+test('preloads every module, so that they arrive together rather than one layer at a time', () => {
+  const links = document.querySelectorAll('link[rel="modulepreload"]');
+  const preloaded = [...links].map((link) => link.getAttribute('href'));
+  const modules = readdirSync(new URL('../js/', import.meta.url))
+    .filter((name) => name !== 'app.js' && name !== 'theme.js')
+    .map((name) => `js/${name}`);
+  assert.deepEqual(preloaded.sort(), modules.sort());
 });
 
 test('the dialog opens on request and can always be closed', () => {
