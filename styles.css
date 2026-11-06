@@ -407,10 +407,6 @@ noscript .error { margin: 16px; }
   min-height: 36px;
 }
 
-.loader-head .site-tools { margin-right: 0; }
-
-.loader-head .github-link, .loader-head .theme-toggle { width: 36px; height: 36px; }
-
 .loader-head h2 {
   display: flex;
   flex: 1;
@@ -488,7 +484,6 @@ noscript .error { margin: 16px; }
 
   .masthead { flex: 1 1 calc(100% - 152px); }
   .github-link, .theme-toggle { width: 40px; height: 44px; }
-  .loader-head .github-link, .loader-head .theme-toggle { width: 40px; height: 44px; }
   .open-recording { flex: none; width: 140px; }
   .panel-controls .control { flex: 1 1 40%; }
   .pitch, .scale-note, .disclaimer { flex: 1 1 100%; margin-top: 0; }

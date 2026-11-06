@@ -58,26 +58,23 @@ test('says what Ventris is and that recordings stay on the computer', () => {
   assert.match(pitch, /never leave your computer/);
 });
 
-test('offers the theme switch and GitHub link on the dialog and in the viewer', () => {
-  for (const place of ['.loader-head', '.masthead']) {
-    const area = document.querySelector(place);
-    const link = area.querySelector('.github-link');
-    assert.ok(area.querySelector('.theme-toggle'), place);
-    assert.equal(link.href, 'https://github.com/ventris-tools/ventris');
-    assert.equal(link.getAttribute('aria-label'), 'Ventris on GitHub');
-  }
+test('offers the theme switch and GitHub link in the viewer', () => {
+  const area = document.querySelector('.masthead');
+  const link = area.querySelector('.github-link');
+  assert.ok(area.querySelector('.theme-toggle'));
+  assert.equal(link.href, 'https://github.com/ventris-tools/ventris');
+  assert.equal(link.getAttribute('aria-label'), 'Ventris on GitHub');
 });
 
 test('opens GitHub in a new tab so that the recording stays open', () => {
-  for (const link of document.querySelectorAll('.github-link')) {
-    assert.equal(link.target, '_blank');
-    assert.equal(link.rel, 'noopener noreferrer');
-  }
+  const link = document.querySelector('.github-link');
+  assert.equal(link.target, '_blank');
+  assert.equal(link.rel, 'noopener noreferrer');
 });
 
 test('every icon in use is defined on the page', () => {
   const uses = [...document.querySelectorAll('use')].map((use) => use.getAttribute('href'));
-  assert.ok(uses.length >= 6);
+  assert.ok(uses.length >= 5);
   for (const href of uses) assert.ok(document.querySelector(`symbol${href}`), href);
 });
 

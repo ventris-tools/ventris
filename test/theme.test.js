@@ -86,25 +86,13 @@ test('other clicks leave the theme alone', () => {
   assert.equal(page.saved.size, 0);
 });
 
-test('every switch names the theme it leads to', () => {
+test('the switch names the theme it leads to', () => {
   const page = load();
-  const labels = () =>
-    [...page.document.querySelectorAll('.theme-toggle')].map((button) => [
-      button.title,
-      button.getAttribute('aria-label'),
-    ]);
-  assert.equal(labels().length, 2);
-  assert.ok(
-    labels()
-      .flat()
-      .every((label) => label === 'Switch to dark mode'),
-  );
+  const button = page.document.querySelector('.theme-toggle');
+  const labels = () => [button.title, button.getAttribute('aria-label')];
+  assert.deepEqual(labels(), ['Switch to dark mode', 'Switch to dark mode']);
   page.toggle();
-  assert.ok(
-    labels()
-      .flat()
-      .every((label) => label === 'Switch to light mode'),
-  );
+  assert.deepEqual(labels(), ['Switch to light mode', 'Switch to light mode']);
 });
 
 test('follows a change in the system only until someone chooses', () => {
