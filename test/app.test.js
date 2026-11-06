@@ -53,7 +53,7 @@ test('opens the demo where a blink and the eyes closing share the first screen',
 });
 
 test('says what Ventris is and that recordings stay on the computer', () => {
-  const pitch = document.querySelector('.panel-controls .pitch').textContent;
+  const pitch = document.querySelector('.panel-controls .note').textContent;
   assert.match(pitch, /EEG recording/);
   assert.match(pitch, /never leave your computer/);
 });

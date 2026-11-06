@@ -59,7 +59,7 @@
 
       <button class="button open-recording" id="open-recording" type="button">Open a recording</button>
 
-      <p class="pitch">Ventris shows the signals and frequency bands of an EEG recording. Your recordings never leave your computer. <span id="demo-flag">You're looking at a synthetic demo.</span></p>
+      <p class="note">Ventris shows the signals and frequency bands of an EEG recording. Your recordings never leave your computer. <span id="demo-flag">You're looking at a synthetic demo.</span></p>
 
       <label class="control">
         <span>Window</span>
@@ -74,9 +74,9 @@
         </div>
       </div>
 
-      <p class="scale-note">Each row has its own ± range, so compare shapes rather than heights.</p>
+      <p class="note">Each row has its own ± range, so compare shapes rather than heights.</p>
 
-      <p class="disclaimer">Research tool, not a medical device.</p>
+      <p class="note disclaimer">Research tool, not a medical device.</p>
     </aside>
 
     <section class="trace-panel" aria-label="EEG traces">
@@ -103,7 +103,7 @@
           <caption class="visually-hidden">Share of signal power in each frequency band</caption>
           <tbody id="band-rows"></tbody>
         </table>
-        <p class="section-note" id="band-note"></p>
+        <p class="note section-note" id="band-note"></p>
       </details>
 
       <details class="section" id="annotations" hidden>
@@ -114,7 +114,7 @@
       <details class="section">
         <summary><h2>Time domain</h2></summary>
         <dl class="properties" id="time-rows"></dl>
-        <p class="section-note" id="time-note"></p>
+        <p class="note section-note" id="time-note"></p>
       </details>
 
       <details class="section" open>
@@ -149,7 +149,7 @@
     </button>
     <input id="file-input" type="file" accept=".edf" hidden>
     <p class="error" id="error" role="alert" hidden></p>
-    <p class="loader-note">Your recordings never leave your computer.</p>
+    <p class="note loader-note">Your recordings never leave your computer.</p>
     <div class="loader-demo" id="demo-offer">
       <span>No recording to hand?</span>
       <button class="button" id="show-demo" type="button">Try the demo</button>
