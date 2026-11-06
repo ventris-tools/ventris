@@ -125,6 +125,22 @@ test('keeps the fraction of an annotation that falls between seconds', async () 
   $('show-demo').click();
 });
 
+// A real file of this size takes jsdom minutes, so this checks the cause: the browser
+// refuses a call with too many arguments, and that left the old recording on screen.
+test('never passes the annotations as arguments, which a long list would overflow', async (t) => {
+  const tal = (record) => `+${record}\x14\x14\0+${record}\x14Spike\x14\0`;
+  const annotated = buildEdf([signal(), { label: 'EDF Annotations', samples: 32, tal }], {
+    records: 30,
+    reserved: 'EDF+C',
+  });
+  const replace = t.mock.method($('annotation-list'), 'replaceChildren');
+  await open('annotated.edf', annotated);
+  assert.equal(replace.mock.calls.at(-1).arguments.length, 1);
+  assert.equal($('annotation-list').children.length, 30);
+  $('open-recording').click();
+  $('show-demo').click();
+});
+
 test('offers the demo only while something else is open', async () => {
   $('open-recording').click();
   assert.equal($('demo-offer').hidden, true);

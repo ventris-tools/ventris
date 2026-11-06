@@ -145,7 +145,10 @@ function annotationButton({ time, text }) {
 
 function showAnnotations({ annotations }) {
   annotationSection.hidden = annotations.length === 0;
-  annotationList.replaceChildren(...annotations.map(annotationButton));
+  // One at a time, because a recording can hold more of them than a call can take arguments.
+  const items = document.createDocumentFragment();
+  for (const annotation of annotations) items.append(annotationButton(annotation));
+  annotationList.replaceChildren(items);
 }
 
 function updateBands() {
