@@ -141,6 +141,16 @@ const oneChannel = (data, fs = 256) => ({
   duration: data.length / fs,
 });
 
+const twoRows = () => ({
+  channels: ['Cz', 'Pz'].map((label) => ({
+    label,
+    unit: 'uV',
+    fs: 256,
+    data: new Float32Array(2560),
+  })),
+  duration: 10,
+});
+
 test('draws a burst on a channel that mostly rests on one value', () => {
   const { view, canvas } = viewOf(oneChannel(sparse()));
   view.setView(45, 10, 1);
@@ -276,4 +286,119 @@ test('the mouse reads a value and leaving clears it', () => {
   assert.equal(hits.at(-1).announce, false);
   canvas.dispatchEvent(new window.MouseEvent('pointerleave'));
   assert.equal(hits.at(-1).hit, null);
+});
+
+test('leaving the plot for the row labels clears the reading', () => {
+  const { view, canvas, hits } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  canvas.dispatchEvent(new window.MouseEvent('pointermove', { clientX: 300, clientY: 50 }));
+  canvas.dispatchEvent(new window.MouseEvent('pointermove', { clientX: 1, clientY: 50 }));
+  assert.equal(hits.at(-1).hit, null);
+  assert.equal(view.cursor, null);
+});
+
+test('a finger dragged sideways scrolls by how far it moved, and lifting it ends the drag', () => {
+  const scrolled = [];
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  view.onScroll = (pixels) => scrolled.push(pixels);
+  const touch = (type, clientX) => {
+    const event = new window.MouseEvent(type, { clientX, clientY: 50 });
+    Object.assign(event, { pointerType: 'touch', isPrimary: true });
+    canvas.dispatchEvent(event);
+  };
+  touch('pointerdown', 300);
+  touch('pointermove', 280);
+  touch('pointerup', 280);
+  touch('pointerdown', 100);
+  assert.deepEqual(scrolled, [20]);
+});
+
+test('the keyboard scrolls the rows to keep the cursor in view', () => {
+  const channels = Array.from({ length: 40 }, (_, row) => ({
+    label: `C${row}`,
+    unit: 'uV',
+    fs: 256,
+    data: new Float32Array(2560),
+  }));
+  const { view, canvas } = viewOf({ channels, duration: 10 });
+  view.setView(0, 10, 1);
+  const frame = canvas.parentElement;
+  view.moveCursor(10, 39, false);
+  view.reveal(39);
+  assert.equal(frame.scrollTop, view.rowHeight * 40 - frame.clientHeight);
+  view.reveal(0);
+  assert.equal(frame.scrollTop, 0);
+});
+
+test('a keyboard user lands on a cursor in the first row in view, and the mouse does not', () => {
+  const { view, canvas, hits } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  canvas.matches = () => false;
+  canvas.dispatchEvent(new window.FocusEvent('focus'));
+  assert.equal(view.cursor, null);
+  canvas.matches = () => true;
+  canvas.dispatchEvent(new window.FocusEvent('focus'));
+  assert.equal(view.cursor.row, 0);
+  assert.equal(hits.at(-1).announce, true);
+  canvas.dispatchEvent(new window.FocusEvent('focus'));
+  assert.equal(hits.at(-1).announce, true);
+});
+
+test('the cursor shades its row and marks its place, behind and in front of the traces', () => {
+  const { view, canvas } = viewOf(twoRows());
+  view.setView(0, 10, 1);
+  const shading = canvas.previousElementSibling;
+  const line = canvas.nextElementSibling;
+  assert.deepEqual([shading.hidden, line.hidden], [true, true]);
+
+  view.moveCursor(100.4, 1, false);
+  assert.deepEqual([shading.hidden, line.hidden], [false, false]);
+  assert.equal(shading.style.top, `${view.rowHeight}px`);
+  assert.equal(shading.style.height, `${view.rowHeight}px`);
+  assert.equal(shading.style.left, `${view.gutter}px`);
+  assert.equal(shading.style.width, `${view.plotWidth()}px`);
+  assert.equal(line.style.left, `${Math.round(view.gutter + 100.4)}px`);
+  assert.equal(line.style.height, `${view.rowHeight * 2}px`);
+
+  view.leave();
+  assert.deepEqual([shading.hidden, line.hidden], [true, true]);
+});
+
+test('pointing at a trace redraws nothing', async () => {
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const context = canvas.getContext('2d');
+  context.calls.length = 0;
+  view.moveCursor(100, 0, false);
+  view.leave();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(context.calls, []);
+});
+
+test('the cursor follows the rows when the view changes size', () => {
+  const { view, canvas } = viewOf(twoRows());
+  view.setView(0, 10, 1);
+  view.moveCursor(100, 1, false);
+  const before = view.rowHeight;
+  Object.defineProperty(canvas.parentElement, 'clientHeight', { value: 2000 });
+  view.resize();
+  assert.ok(view.rowHeight > before);
+  assert.equal(canvas.previousElementSibling.style.top, `${view.rowHeight}px`);
+});
+
+test('a new recording draws only once its window arrives', () => {
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  const context = canvas.getContext('2d');
+  context.calls.length = 0;
+  view.setRecording({ annotations: [], ...oneChannel(new Float32Array(2560)) });
+  assert.deepEqual(called(canvas, 'clearRect'), []);
+});
+
+test('a new recording removes the cursor from the screen', () => {
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  view.moveCursor(100, 0, false);
+  view.setRecording({ annotations: [], ...oneChannel(new Float32Array(2560)) });
+  assert.equal(canvas.nextElementSibling.hidden, true);
 });

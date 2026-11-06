@@ -48,9 +48,22 @@ test('names the range the bands cover', () => {
   assert.equal(BAND_RANGE, '1 to 30 Hz');
 });
 
+// Runs the measurement straight through, as the app does when nothing moves.
+function measure(channels, start, length) {
+  const steps = bandShares(channels, start, length);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+test('measuring bands pauses after each channel it measures', () => {
+  const channels = ['Cz', 'Pz', 'Oz'].map((label) => ({ label, fs: 256, data: sine(10, 256, 10) }));
+  assert.equal([...bandShares(channels, 0, 10)].length, 3);
+});
+
 test('says why it has no band shares', () => {
   const reason = (channels, length = 10) => {
-    const result = bandShares(channels, 0, length);
+    const result = measure(channels, 0, length);
     assert.equal(result.shares, null);
     return result.reason;
   };
@@ -71,7 +84,7 @@ test('a long window costs a fixed number of segments and keeps its shares', () =
 });
 
 test('leaves out non-EEG and slow channels', () => {
-  const result = bandShares(
+  const result = measure(
     [
       { label: 'EEG Fpz-Cz', fs: 256, data: sine(10, 256, 10) },
       { label: 'EMG submental', fs: 256, data: sine(20, 256, 10) },
@@ -87,8 +100,8 @@ test('leaves out non-EEG and slow channels', () => {
 
 test('the demo shows more alpha while its eyes are closed', () => {
   const { channels } = demoRecording();
-  const open = bandShares(channels, 5, 10).shares[index('Alpha')];
-  const closed = bandShares(channels, 25, 10).shares[index('Alpha')];
+  const open = measure(channels, 5, 10).shares[index('Alpha')];
+  const closed = measure(channels, 25, 10).shares[index('Alpha')];
   assert.ok(closed > open * 1.5, `open ${open}, closed ${closed}`);
 });
 

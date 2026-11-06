@@ -1,6 +1,7 @@
 // Draws scrolling EEG traces on a canvas, one row per channel. The time axis has a canvas
 // of its own below them, so it stays in view however far the rows scroll.
 
+import { signalStats } from './dsp.js';
 import { formatClock, rowRange } from './format.js';
 
 export const GAIN_LIMITS = [0.2, 12];
@@ -21,6 +22,7 @@ const RANGE_SIZE = 10;
 // How much of a half row a trace two spreads high fills at normal size.
 const ROW_FILL = 0.55;
 
+const SPREAD_SAMPLES = 8192;
 const BASELINE_SECONDS = 30;
 const BASELINE_SAMPLES = 128;
 
@@ -38,28 +40,27 @@ const CURSOR_KEYS = {
   ArrowDown: [0, 1],
 };
 
-const clamp = (value, lowest, highest) => Math.min(highest, Math.max(lowest, value));
+export const clamp = (value, lowest, highest) => Math.min(highest, Math.max(lowest, value));
 
-function deviation(data) {
-  let sum = 0;
-  for (let i = 0; i < data.length; i += 1) sum += data[i];
-  const mean = sum / data.length;
-  let squares = 0;
-  for (let i = 0; i < data.length; i += 1) squares += (data[i] - mean) ** 2;
-  return Math.sqrt(squares / data.length);
+// Evenly spaced samples from part of a channel, sorted. A typed array sorts by value on its own,
+// which is far faster than an array with a comparison function.
+function sortedSample(data, from, to, wanted) {
+  const stride = Math.max(1, Math.floor((to - from) / wanted));
+  const sample = new Float64Array(Math.ceil((to - from) / stride));
+  for (let i = 0; i < sample.length; i += 1) sample[i] = data[from + i * stride];
+  return sample.sort();
 }
+
+const middle = (sorted) => sorted[sorted.length >> 1];
 
 // Median absolute deviation, so a blink does not shrink a whole channel. A channel that
 // rests on one value for most of a recording has none, and the standard deviation takes
 // over so that its bursts still show.
 export function robustSpread(data) {
-  const stride = Math.max(1, Math.floor(data.length / 8192));
-  const sample = [];
-  for (let i = 0; i < data.length; i += stride) sample.push(data[i]);
-  sample.sort((a, b) => a - b);
-  const median = sample[sample.length >> 1];
-  const deviations = sample.map((value) => Math.abs(value - median)).sort((a, b) => a - b);
-  return 1.4826 * deviations[deviations.length >> 1] || deviation(data);
+  const sample = sortedSample(data, 0, data.length, SPREAD_SAMPLES);
+  const median = middle(sample);
+  const deviations = sample.map((value) => Math.abs(value - median)).sort();
+  return 1.4826 * middle(deviations) || signalStats(data).deviation;
 }
 
 // A channel's slow level: the median of each block of the recording, so a blink counts for
@@ -71,11 +72,7 @@ export function baseline(data, fs) {
   for (let index = 0; index < levels.length; index += 1) {
     const from = index * block;
     const to = Math.min(data.length, from + block);
-    const stride = Math.max(1, Math.floor((to - from) / BASELINE_SAMPLES));
-    const sample = [];
-    for (let i = from; i < to; i += stride) sample.push(data[i]);
-    sample.sort((a, b) => a - b);
-    levels[index] = sample[sample.length >> 1];
+    levels[index] = middle(sortedSample(data, from, to, BASELINE_SAMPLES));
   }
   return { levels, block };
 }
@@ -112,6 +109,13 @@ export function sidewaysPixels({ deltaX, deltaY, deltaMode, shiftKey }, pageWidt
   return (deltaX || deltaY) * [1, LINE_PIXELS, pageWidth][deltaMode];
 }
 
+function cursorMark(className) {
+  const mark = document.createElement('div');
+  mark.className = className;
+  mark.hidden = true;
+  return mark;
+}
+
 // Cuts text to a width. The app's fonts are monospace, so one character measures them all.
 function fitText(context, text, width) {
   if (context.measureText(text).width <= width) return text;
@@ -140,6 +144,13 @@ export class TraceView {
     this.cursor = null;
     this.touchX = null;
     this.frame = 0;
+
+    // The cursor is made of elements rather than drawn, so pointing at a trace redraws nothing.
+    // The canvas is see-through, so the row's shading can sit behind the traces.
+    this.rowMark = cursorMark('cursor-row');
+    this.lineMark = cursorMark('cursor-line');
+    canvas.before(this.rowMark);
+    canvas.after(this.lineMark);
 
     new ResizeObserver(() => {
       const { clientWidth, clientHeight } = canvas.parentElement;
@@ -175,7 +186,8 @@ export class TraceView {
     this.baselines = recording.channels.map(({ data, fs }) => baseline(data, fs));
     this.cursor = null;
     this.onHover(null);
-    this.resize();
+    // Not a draw yet: the window it would show belongs to the last recording. setView draws.
+    this.layout();
   }
 
   setView(start, length, gain) {
@@ -206,6 +218,11 @@ export class TraceView {
 
   resize() {
     if (!this.recording) return;
+    this.layout();
+    this.draw();
+  }
+
+  layout() {
     const { canvas, axis, context, axisContext } = this;
     const { channels } = this.recording;
     const frame = canvas.parentElement;
@@ -223,7 +240,7 @@ export class TraceView {
       GAIN_LIMITS.map((gain) => context.measureText(this.rangeText(row, gain)).width),
     );
     this.gutter = Math.ceil(Math.max(...labels, ...ranges)) + 20;
-    this.draw();
+    this.showCursor();
   }
 
   font(size) {
@@ -281,7 +298,20 @@ export class TraceView {
   moveCursor(x, row, announce) {
     this.cursor = { x, row };
     this.report(announce);
-    this.schedule();
+    this.showCursor();
+  }
+
+  showCursor() {
+    const { cursor, rowMark, lineMark, gutter, rowHeight } = this;
+    rowMark.hidden = !cursor;
+    lineMark.hidden = !cursor;
+    if (!cursor) return;
+    rowMark.style.left = `${gutter}px`;
+    rowMark.style.top = `${cursor.row * rowHeight}px`;
+    rowMark.style.width = `${this.plotWidth()}px`;
+    rowMark.style.height = `${rowHeight}px`;
+    lineMark.style.left = `${Math.round(gutter + cursor.x)}px`;
+    lineMark.style.height = `${rowHeight * this.recording.channels.length}px`;
   }
 
   report(announce) {
@@ -299,7 +329,7 @@ export class TraceView {
     if (this.cursor === null) return;
     this.cursor = null;
     this.onHover(null);
-    this.schedule();
+    this.showCursor();
   }
 
   // Keyboard users start from the middle of the first row in view.
@@ -353,21 +383,17 @@ export class TraceView {
   }
 
   draw() {
-    const { context, recording, gutter, rowHeight, cursor } = this;
+    const { context, recording, gutter, rowHeight } = this;
     if (!recording) return;
     const styles = getComputedStyle(document.documentElement);
     const color = (name) => styles.getPropertyValue(name).trim();
     const plotHeight = rowHeight * recording.channels.length;
     const plotWidth = this.plotWidth();
     const ticks = this.ticks();
+    const events = this.visibleEvents();
 
     context.clearRect(0, 0, this.width, plotHeight);
     context.textBaseline = 'middle';
-
-    if (cursor) {
-      context.fillStyle = color('--grid');
-      context.fillRect(gutter, cursor.row * rowHeight, plotWidth, rowHeight);
-    }
 
     // Time grid.
     context.strokeStyle = color('--grid');
@@ -383,7 +409,7 @@ export class TraceView {
     context.beginPath();
     context.rect(gutter, 0, plotWidth, plotHeight);
     context.clip();
-    this.drawEvents(plotHeight, color('--accent'));
+    this.drawEvents(events, plotHeight, color('--accent'));
     context.strokeStyle = color('--trace');
     context.lineWidth = 1;
     context.lineJoin = 'round';
@@ -403,26 +429,17 @@ export class TraceView {
       context.fillText(this.rangeText(row, this.gain), gutter - 10, middle + 7);
     });
 
-    if (cursor) {
-      const x = Math.round(gutter + cursor.x) + 0.5;
-      context.strokeStyle = color('--accent');
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, plotHeight);
-      context.stroke();
-    }
-
-    this.drawAxis(ticks, color);
+    this.drawAxis(ticks, events, color);
   }
 
   // A marker at each annotation, with a shaded span when it lasts a while.
-  drawEvents(plotHeight, accent) {
+  drawEvents(events, plotHeight, accent) {
     const { context } = this;
     context.strokeStyle = accent;
     context.fillStyle = accent;
     context.lineWidth = 1;
     context.setLineDash([4, 3]);
-    for (const { time, duration } of this.visibleEvents()) {
+    for (const { time, duration } of events) {
       const x = Math.round(this.xOf(time)) + 0.5;
       if (duration > 0) {
         context.globalAlpha = 0.12;
@@ -437,7 +454,7 @@ export class TraceView {
     context.setLineDash([]);
   }
 
-  drawAxis(ticks, color) {
+  drawAxis(ticks, events, color) {
     const { axisContext: context, width, gutter } = this;
     const eventRow = this.eventRow();
     context.clearRect(0, 0, width, eventRow + TICK_ROW);
@@ -451,7 +468,6 @@ export class TraceView {
     }
 
     // Annotation names sit here so that they stay in view too.
-    const events = this.visibleEvents();
     const right = gutter + this.plotWidth();
     context.textAlign = 'left';
     context.fillStyle = color('--accent');

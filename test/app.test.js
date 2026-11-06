@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
 import test from 'node:test';
 import { buildEdf } from './support/edf.js';
 import { installDom } from './support/dom.js';
@@ -52,32 +53,38 @@ test('opens the demo where a blink and the eyes closing share the first screen',
 });
 
 test('says what Ventris is and that recordings stay on the computer', () => {
-  const pitch = document.querySelector('.panel-controls .pitch').textContent;
+  const pitch = document.querySelector('.panel-controls .note').textContent;
   assert.match(pitch, /EEG recording/);
   assert.match(pitch, /never leave your computer/);
 });
 
-test('offers the theme switch and GitHub link on the dialog and in the viewer', () => {
-  for (const place of ['.loader-head', '.masthead']) {
-    const area = document.querySelector(place);
-    const link = area.querySelector('.github-link');
-    assert.ok(area.querySelector('.theme-toggle'), place);
-    assert.equal(link.href, 'https://github.com/ventris-tools/ventris');
-    assert.equal(link.getAttribute('aria-label'), 'Ventris on GitHub');
-  }
+test('offers the theme switch and GitHub link in the viewer', () => {
+  const area = document.querySelector('.masthead');
+  const link = area.querySelector('.github-link');
+  assert.ok(area.querySelector('.theme-toggle'));
+  assert.equal(link.href, 'https://github.com/ventris-tools/ventris');
+  assert.equal(link.getAttribute('aria-label'), 'Ventris on GitHub');
 });
 
 test('opens GitHub in a new tab so that the recording stays open', () => {
-  for (const link of document.querySelectorAll('.github-link')) {
-    assert.equal(link.target, '_blank');
-    assert.equal(link.rel, 'noopener noreferrer');
-  }
+  const link = document.querySelector('.github-link');
+  assert.equal(link.target, '_blank');
+  assert.equal(link.rel, 'noopener noreferrer');
 });
 
 test('every icon in use is defined on the page', () => {
   const uses = [...document.querySelectorAll('use')].map((use) => use.getAttribute('href'));
-  assert.ok(uses.length >= 6);
+  assert.ok(uses.length >= 5);
   for (const href of uses) assert.ok(document.querySelector(`symbol${href}`), href);
+});
+
+test('preloads every module, so that they arrive together rather than one layer at a time', () => {
+  const links = document.querySelectorAll('link[rel="modulepreload"]');
+  const preloaded = [...links].map((link) => link.getAttribute('href'));
+  const modules = readdirSync(new URL('../js/', import.meta.url))
+    .filter((name) => name !== 'app.js' && name !== 'theme.js')
+    .map((name) => `js/${name}`);
+  assert.deepEqual(preloaded.sort(), modules.sort());
 });
 
 test('the dialog opens on request and can always be closed', () => {
@@ -125,6 +132,22 @@ test('keeps the fraction of an annotation that falls between seconds', async () 
   $('show-demo').click();
 });
 
+// A real file of this size takes jsdom minutes, so this checks the cause: the browser
+// refuses a call with too many arguments, and that left the old recording on screen.
+test('never passes the annotations as arguments, which a long list would overflow', async (t) => {
+  const tal = (record) => `+${record}\x14\x14\0+${record}\x14Spike\x14\0`;
+  const annotated = buildEdf([signal(), { label: 'EDF Annotations', samples: 32, tal }], {
+    records: 30,
+    reserved: 'EDF+C',
+  });
+  const replace = t.mock.method($('annotation-list'), 'replaceChildren');
+  await open('annotated.edf', annotated);
+  assert.equal(replace.mock.calls.at(-1).arguments.length, 1);
+  assert.equal($('annotation-list').children.length, 30);
+  $('open-recording').click();
+  $('show-demo').click();
+});
+
 test('offers the demo only while something else is open', async () => {
   $('open-recording').click();
   assert.equal($('demo-offer').hidden, true);
@@ -155,6 +178,15 @@ test('moves through time from the keyboard', () => {
   press(position, 'End');
   assert.equal(Number(position.value), 50);
   press(position, 'Home');
+});
+
+test('the slider moves through the recording and says where it is', () => {
+  $('position').value = '25';
+  $('position').dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal($('position-text').textContent, '0:25 to 0:35');
+  assert.equal($('position').getAttribute('aria-valuetext'), '0:25 to 0:35');
+  assert.match($('traces').getAttribute('aria-label'), /from 0:25 to 0:35/);
+  press($('position'), 'Home');
 });
 
 test('the canvas keeps the arrow keys for its cursor', () => {
@@ -201,6 +233,39 @@ test('gives the real reason when bands cannot be measured', async () => {
   await wait(80);
   assert.equal($('band-note').textContent, 'This recording has no EEG channels to measure.');
   assert.equal($('time-note').textContent, 'This recording has no EEG channels to measure.');
+});
+
+test('a move drops the band measurement under way, so only the latest one shows', async (t) => {
+  await open('pair.edf', buildEdf([signal(), { ...signal(), label: 'Pz' }], { records: 30 }));
+  await wait(80);
+
+  // A clock that races, so that measuring pauses after each channel.
+  let now = 0;
+  t.mock.method(performance, 'now', () => (now += 100));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const shown = t.mock.method(document.querySelector('.bar').style, 'setProperty');
+  const moveSlider = (seconds) => {
+    $('position').value = String(seconds);
+    $('position').dispatchEvent(new window.Event('input', { bubbles: true }));
+  };
+  const runTimers = async () => {
+    for (let i = 0; i < 8; i += 1) {
+      t.mock.timers.tick(0);
+      await Promise.resolve();
+    }
+  };
+
+  moveSlider(5);
+  t.mock.timers.tick(60);
+  assert.equal(shown.mock.callCount(), 0);
+
+  moveSlider(10);
+  await runTimers();
+  assert.equal(shown.mock.callCount(), 0);
+  t.mock.timers.tick(60);
+  await runTimers();
+  assert.equal(shown.mock.callCount(), 1);
+  assert.equal($('position-text').textContent, '0:10 to 0:20');
 });
 
 test('a bad file shows its error and keeps the recording on screen', async () => {
@@ -265,6 +330,41 @@ test('marks a drag over the page and clears it on drop', async () => {
   assert.ok(document.body.classList.contains('dropping'));
   await open('night.edf');
   assert.ok(!document.body.classList.contains('dropping'));
+});
+
+test('clears the mark when a drag leaves the window, but not when it moves within it', () => {
+  const dragOver = new window.Event('dragover', { cancelable: true });
+  dragOver.dataTransfer = { types: ['Files'] };
+  window.dispatchEvent(dragOver);
+  const dragLeave = (relatedTarget) => {
+    const event = new window.Event('dragleave');
+    event.relatedTarget = relatedTarget;
+    window.dispatchEvent(event);
+  };
+  dragLeave(document.body);
+  assert.ok(document.body.classList.contains('dropping'));
+  dragLeave(null);
+  assert.ok(!document.body.classList.contains('dropping'));
+});
+
+test('opens the file chosen in the dialog, and lets the same file be chosen again', async () => {
+  const input = $('file-input');
+  Object.defineProperty(input, 'files', {
+    value: [fileOf('chosen.edf', edf())],
+    configurable: true,
+  });
+  input.dispatchEvent(new window.Event('change'));
+  await wait(0);
+  await wait(0);
+  assert.equal($('recording-name').textContent, 'chosen.edf');
+  assert.equal(input.value, '');
+});
+
+test('closing the file picker without a choice changes nothing', () => {
+  const input = $('file-input');
+  Object.defineProperty(input, 'files', { value: [], configurable: true });
+  input.dispatchEvent(new window.Event('change'));
+  assert.equal($('recording-name').textContent, 'chosen.edf');
 });
 
 test('sideways wheel movement scrolls time and takes the event', () => {

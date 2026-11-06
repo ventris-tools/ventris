@@ -29,22 +29,23 @@
 
   const opposite = () => (root.dataset.theme === 'dark' ? 'light' : 'dark');
 
-  function labelButtons() {
+  // The first call comes before the switch exists, and DOMContentLoaded catches up.
+  function labelSwitch() {
+    const button = document.querySelector('.theme-toggle');
+    if (!button) return;
     const label = `Switch to ${opposite()} mode`;
-    for (const button of document.querySelectorAll('.theme-toggle')) {
-      button.title = label;
-      button.setAttribute('aria-label', label);
-    }
+    button.title = label;
+    button.setAttribute('aria-label', label);
   }
 
   function apply() {
     root.dataset.theme = chosen ?? (system.matches ? 'dark' : 'light');
-    labelButtons();
+    labelSwitch();
   }
 
   apply();
   system.addEventListener('change', apply);
-  document.addEventListener('DOMContentLoaded', labelButtons);
+  document.addEventListener('DOMContentLoaded', labelSwitch);
   document.addEventListener('click', ({ target }) => {
     if (!target.closest('.theme-toggle')) return;
     chosen = opposite();

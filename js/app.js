@@ -3,7 +3,7 @@ import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
 import { amount, count, decimalsFor, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
-import { GAIN_LIMITS, sidewaysPixels, TraceView, windowChoices } from './traces.js';
+import { clamp, GAIN_LIMITS, sidewaysPixels, TraceView, windowChoices } from './traces.js';
 
 const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
@@ -11,6 +11,9 @@ const DEMO_NAME = 'Demo (synthetic data)';
 
 // A file that takes longer than this to read shows the dialog, so a drop gets a response.
 const PROGRESS_DELAY = 150;
+
+// How long measuring bands can hold the page before it lets a frame through, in milliseconds.
+const BAND_SLICE = 10;
 
 const BAND_PROBLEMS = {
   'no-eeg': 'This recording has no EEG channels to measure.',
@@ -49,6 +52,7 @@ const annotationList = $('annotation-list');
 
 const state = { recording: null, start: 0, length: PREFERRED_WINDOW, gain: 1 };
 let bandTimer = 0;
+let bandRun = 0;
 let progressTimer = 0;
 let openRequest = 0;
 
@@ -65,11 +69,11 @@ function showHover(hit, announce = false) {
   if (announce) cursorStatus.textContent = text;
 }
 
+const latestStart = () => Math.max(0, state.recording.duration - state.length);
+
 function moveTo(time) {
-  const { recording, start, length } = state;
-  const latest = Math.max(0, recording.duration - length);
-  const next = Math.min(latest, Math.max(0, time));
-  if (next === start) return;
+  const next = clamp(time, 0, latestStart());
+  if (next === state.start) return;
   state.start = next;
   position.value = String(next);
   refresh();
@@ -145,12 +149,13 @@ function annotationButton({ time, text }) {
 
 function showAnnotations({ annotations }) {
   annotationSection.hidden = annotations.length === 0;
-  annotationList.replaceChildren(...annotations.map(annotationButton));
+  // One at a time, because a recording can hold more of them than a call can take arguments.
+  const items = document.createDocumentFragment();
+  for (const annotation of annotations) items.append(annotationButton(annotation));
+  annotationList.replaceChildren(items);
 }
 
-function updateBands() {
-  const { recording, start, length } = state;
-  const { shares, channels, reason } = bandShares(recording.channels, start, length);
+function showBands({ shares, channels, reason }) {
   bandRows.forEach(({ name, row, bar, value }, index) => {
     const share = shares ? shares[index] : 0;
     bar.hidden = !shares;
@@ -161,6 +166,24 @@ function updateBands() {
   bandNote.textContent = shares
     ? `Share of ${BAND_RANGE} power in this window, averaged over ${count(channels, 'EEG channel')}.`
     : BAND_PROBLEMS[reason];
+}
+
+// Keeps the page responsive however long the window is, and gives up if the view moves on.
+async function updateBands() {
+  const run = bandRun;
+  const { recording, start, length } = state;
+  const steps = bandShares(recording.channels, start, length);
+  let sliceStart = performance.now();
+  let step = steps.next();
+  while (!step.done) {
+    if (performance.now() - sliceStart > BAND_SLICE) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (run !== bandRun) return;
+      sliceStart = performance.now();
+    }
+    step = steps.next();
+  }
+  showBands(step.value);
 }
 
 function refresh() {
@@ -175,13 +198,14 @@ function refresh() {
   );
   view.setView(start, length, gain);
   clearTimeout(bandTimer);
+  bandRun += 1;
   bandTimer = setTimeout(updateBands, 60);
 }
 
 function setWindow(seconds) {
   const { recording } = state;
   state.length = Math.min(seconds, recording.duration);
-  const latest = Math.max(0, recording.duration - state.length);
+  const latest = latestStart();
   state.start = Math.min(state.start, latest);
   position.max = String(latest);
   position.disabled = latest === 0;
@@ -334,8 +358,7 @@ tracePanel.addEventListener(
 );
 
 function changeGain(factor) {
-  const [lowest, highest] = GAIN_LIMITS;
-  state.gain = Math.min(highest, Math.max(lowest, state.gain * factor));
+  state.gain = clamp(state.gain * factor, ...GAIN_LIMITS);
   updateGainButtons();
   refresh();
 }
