@@ -160,7 +160,6 @@ test('the demo says it is synthetic and fills every section', () => {
   assert.equal(lookup(general)['Start date'], 'Unknown');
   assert.equal(lookup(acquisition).Format, 'Synthetic');
   assert.equal(lookup(acquisition).Annotations, '2');
-  assert.match(demo.warnings[0], /not a real recording/);
   assert.deepEqual(channels, [
     ['EEG', '8'],
     ['Unit', 'µV'],

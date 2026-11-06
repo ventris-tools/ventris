@@ -52,24 +52,36 @@ test('opens the demo where a blink and the eyes closing share the first screen',
   assert.equal($('position-text').textContent, '0:13 to 0:23');
 });
 
-test('says what Ventris is and that recordings stay on the computer', () => {
-  const pitch = document.querySelector('.panel-controls .note').textContent;
-  assert.match(pitch, /EEG recording/);
-  assert.match(pitch, /never leave your computer/);
+test('keeps the masthead to the logo and the name', () => {
+  const masthead = document.querySelector('.masthead');
+  assert.equal(masthead.textContent.trim(), 'Ventris');
+  assert.equal(masthead.querySelector('a, button'), null);
 });
 
-test('offers the theme switch and GitHub link in the viewer', () => {
-  const area = document.querySelector('.masthead');
+test('leaves explanations to the help page, apart from its two promises', () => {
+  assert.equal(document.querySelector('.panel-controls .note'), null);
+  assert.match(document.querySelector('.loader-note').textContent, /never leave your computer/);
+  assert.match(document.querySelector('.site-footer .note').textContent, /not a medical device/);
+});
+
+test('offers help, the theme switch and the GitHub link in the footer', () => {
+  const area = document.querySelector('.site-footer');
+  const help = area.querySelector('.help-link');
   const link = area.querySelector('.github-link');
+  assert.equal(help.getAttribute('href'), 'help.html');
+  assert.equal(help.textContent.trim(), 'Help');
   assert.ok(area.querySelector('.theme-toggle'));
   assert.equal(link.href, 'https://github.com/ventris-tools/ventris');
   assert.equal(link.getAttribute('aria-label'), 'Ventris on GitHub');
 });
 
-test('opens GitHub in a new tab so that the recording stays open', () => {
-  const link = document.querySelector('.github-link');
-  assert.equal(link.target, '_blank');
-  assert.equal(link.rel, 'noopener noreferrer');
+test('opens help and GitHub in a new tab so that the recording stays open', () => {
+  const links = document.querySelectorAll('.site-tools a');
+  assert.equal(links.length, 2);
+  for (const link of links) {
+    assert.equal(link.target, '_blank');
+    assert.equal(link.rel, 'noopener noreferrer');
+  }
 });
 
 test('every icon in use is defined on the page', () => {
@@ -96,10 +108,8 @@ test('the dialog opens on request and can always be closed', () => {
 });
 
 test('says plainly that the demo is synthetic', () => {
-  assert.equal($('demo-flag').hidden, false);
-  assert.match($('demo-flag').textContent, /synthetic demo/);
-  assert.match($('recording-note').textContent, /not a real recording/);
-  assert.equal($('recording-note').hidden, false);
+  assert.match($('recording-name').textContent, /synthetic data/);
+  assert.match($('info-acquisition').textContent, /Synthetic/);
 });
 
 test('offers windows up to the whole file and starts at ten seconds', () => {
@@ -153,12 +163,27 @@ test('offers the demo only while something else is open', async () => {
   assert.equal($('demo-offer').hidden, true);
   $('close-loader').click();
   await open('night.edf');
-  assert.equal($('demo-flag').hidden, true);
   $('open-recording').click();
   assert.equal($('demo-offer').hidden, false);
   $('show-demo').click();
-  assert.equal($('demo-flag').hidden, false);
+  assert.equal($('demo-offer').hidden, true);
   assert.equal($('position-text').textContent, '0:13 to 0:23');
+});
+
+test('captions the bands and the time figures with what they cover', async () => {
+  await wait(80);
+  assert.equal($('band-note').textContent, '1 to 30 Hz · 8 EEG channels');
+  assert.equal($('time-note').textContent, 'Whole file · 8 EEG channels');
+});
+
+test('keeps a warning about the file in view', async () => {
+  const whole = new Uint8Array(edf());
+  await open('cut.edf', whole.slice(0, whole.length - 100).buffer);
+  assert.equal($('recording-note').hidden, false);
+  assert.match($('recording-note').textContent, /cut off/);
+  $('open-recording').click();
+  $('show-demo').click();
+  assert.equal($('recording-note').hidden, true);
 });
 
 test('moves through time from the keyboard', () => {

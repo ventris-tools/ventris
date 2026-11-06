@@ -48,6 +48,10 @@ npm run format:check
 
 `index.html` preloads the modules so that the browser fetches them together. A new module has to be added there, and a test fails until it is.
 
+## Where text goes
+
+The viewer keeps to labels and short captions, and `help.html` holds anything that takes a sentence. The exceptions are the privacy promise, the medical disclaimer and messages about the file that's open. Help opens in a new tab, so that reading it doesn't close the recording.
+
 ## Deploy
 
 Changes reach `main` through pull requests, which need the `test` check in [ci.yml](.github/workflows/ci.yml) to pass. Each merge then publishes to GitHub Pages.
@@ -100,6 +104,6 @@ Fonts and other assets keep their own licenses. Put the license file next to the
 The README promises that a recording never leaves the computer. Two checks protect that promise:
 
 - ESLint rejects network calls and navigation in `js/`.
-- `test/privacy.test.js` fails if the Content Security Policy in `index.html` changes.
+- `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help.html` changes.
 
 These catch mistakes, not deliberate workarounds, so review changes to them with care. If a change really needs one of them relaxed, update the README's promise in the same pull request.
