@@ -157,8 +157,9 @@ export function relativeBandPower({ power, resolution }) {
 }
 
 // Averages shares across channels, so one loud channel cannot dominate. With nothing to
-// measure, shares is null and reason says why.
-export function bandShares(channels, start, length) {
+// measure, shares is null and reason says why. A long window can take many frames, so this
+// yields after each channel and returns the result, which lets the caller pause or give up.
+export function* bandShares(channels, start, length) {
   const eeg = channels.filter(isEeg);
   const fast = eeg.filter(({ fs }) => fs >= MIN_SAMPLE_RATE);
   const shares = BANDS.map(() => 0);
@@ -177,6 +178,7 @@ export function bandShares(channels, start, length) {
       });
       used += 1;
     }
+    yield;
   }
 
   if (used > 0) {

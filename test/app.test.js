@@ -219,6 +219,39 @@ test('gives the real reason when bands cannot be measured', async () => {
   assert.equal($('time-note').textContent, 'This recording has no EEG channels to measure.');
 });
 
+test('a move drops the band measurement under way, so only the latest one shows', async (t) => {
+  await open('pair.edf', buildEdf([signal(), { ...signal(), label: 'Pz' }], { records: 30 }));
+  await wait(80);
+
+  // A clock that races, so that measuring pauses after each channel.
+  let now = 0;
+  t.mock.method(performance, 'now', () => (now += 100));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const shown = t.mock.method(document.querySelector('.bar').style, 'setProperty');
+  const moveSlider = (seconds) => {
+    $('position').value = String(seconds);
+    $('position').dispatchEvent(new window.Event('input', { bubbles: true }));
+  };
+  const runTimers = async () => {
+    for (let i = 0; i < 8; i += 1) {
+      t.mock.timers.tick(0);
+      await Promise.resolve();
+    }
+  };
+
+  moveSlider(5);
+  t.mock.timers.tick(60);
+  assert.equal(shown.mock.callCount(), 0);
+
+  moveSlider(10);
+  await runTimers();
+  assert.equal(shown.mock.callCount(), 0);
+  t.mock.timers.tick(60);
+  await runTimers();
+  assert.equal(shown.mock.callCount(), 1);
+  assert.equal($('position-text').textContent, '0:10 to 0:20');
+});
+
 test('a bad file shows its error and keeps the recording on screen', async () => {
   await open('night.edf');
   await open('junk.edf', new Uint8Array(600).fill(120).buffer);

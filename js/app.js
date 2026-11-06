@@ -12,6 +12,9 @@ const DEMO_NAME = 'Demo (synthetic data)';
 // A file that takes longer than this to read shows the dialog, so a drop gets a response.
 const PROGRESS_DELAY = 150;
 
+// How long measuring bands can hold the page before it lets a frame through, in milliseconds.
+const BAND_SLICE = 10;
+
 const BAND_PROBLEMS = {
   'no-eeg': 'This recording has no EEG channels to measure.',
   slow: 'No EEG channels here have a high enough sample rate to measure bands.',
@@ -49,6 +52,7 @@ const annotationList = $('annotation-list');
 
 const state = { recording: null, start: 0, length: PREFERRED_WINDOW, gain: 1 };
 let bandTimer = 0;
+let bandRun = 0;
 let progressTimer = 0;
 let openRequest = 0;
 
@@ -151,9 +155,7 @@ function showAnnotations({ annotations }) {
   annotationList.replaceChildren(items);
 }
 
-function updateBands() {
-  const { recording, start, length } = state;
-  const { shares, channels, reason } = bandShares(recording.channels, start, length);
+function showBands({ shares, channels, reason }) {
   bandRows.forEach(({ name, row, bar, value }, index) => {
     const share = shares ? shares[index] : 0;
     bar.hidden = !shares;
@@ -164,6 +166,24 @@ function updateBands() {
   bandNote.textContent = shares
     ? `Share of ${BAND_RANGE} power in this window, averaged over ${count(channels, 'EEG channel')}.`
     : BAND_PROBLEMS[reason];
+}
+
+// Keeps the page responsive however long the window is, and gives up if the view moves on.
+async function updateBands() {
+  const run = bandRun;
+  const { recording, start, length } = state;
+  const steps = bandShares(recording.channels, start, length);
+  let sliceStart = performance.now();
+  let step = steps.next();
+  while (!step.done) {
+    if (performance.now() - sliceStart > BAND_SLICE) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (run !== bandRun) return;
+      sliceStart = performance.now();
+    }
+    step = steps.next();
+  }
+  showBands(step.value);
 }
 
 function refresh() {
@@ -178,6 +198,7 @@ function refresh() {
   );
   view.setView(start, length, gain);
   clearTimeout(bandTimer);
+  bandRun += 1;
   bandTimer = setTimeout(updateBands, 60);
 }
 
