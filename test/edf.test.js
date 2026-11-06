@@ -3,6 +3,15 @@ import test from 'node:test';
 import { EdfError, parseEdf } from '../js/edf.js';
 import { buildEdf } from './support/edf.js';
 
+test('keeps nothing from a recording field that is not in the EDF+ form', () => {
+  const { info } = parseEdf(
+    buildEdf([{ label: 'Cz', samples: 2 }], { recording: 'Night two, ward 3' }),
+  );
+  assert.equal(info.project, null);
+  assert.equal(info.experimenter, null);
+  assert.equal(info.device, null);
+});
+
 test('scales digital values to physical units', () => {
   const buffer = buildEdf([{ label: 'Cz', samples: 2, value: (r, i) => (i === 0 ? 1000 : -500) }]);
   const recording = parseEdf(buffer);

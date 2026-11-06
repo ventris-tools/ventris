@@ -288,6 +288,62 @@ test('the mouse reads a value and leaving clears it', () => {
   assert.equal(hits.at(-1).hit, null);
 });
 
+test('leaving the plot for the row labels clears the reading', () => {
+  const { view, canvas, hits } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  canvas.dispatchEvent(new window.MouseEvent('pointermove', { clientX: 300, clientY: 50 }));
+  canvas.dispatchEvent(new window.MouseEvent('pointermove', { clientX: 1, clientY: 50 }));
+  assert.equal(hits.at(-1).hit, null);
+  assert.equal(view.cursor, null);
+});
+
+test('a finger dragged sideways scrolls by how far it moved, and lifting it ends the drag', () => {
+  const scrolled = [];
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  view.onScroll = (pixels) => scrolled.push(pixels);
+  const touch = (type, clientX) => {
+    const event = new window.MouseEvent(type, { clientX, clientY: 50 });
+    Object.assign(event, { pointerType: 'touch', isPrimary: true });
+    canvas.dispatchEvent(event);
+  };
+  touch('pointerdown', 300);
+  touch('pointermove', 280);
+  touch('pointerup', 280);
+  touch('pointerdown', 100);
+  assert.deepEqual(scrolled, [20]);
+});
+
+test('the keyboard scrolls the rows to keep the cursor in view', () => {
+  const channels = Array.from({ length: 40 }, (_, row) => ({
+    label: `C${row}`,
+    unit: 'uV',
+    fs: 256,
+    data: new Float32Array(2560),
+  }));
+  const { view, canvas } = viewOf({ channels, duration: 10 });
+  view.setView(0, 10, 1);
+  const frame = canvas.parentElement;
+  view.moveCursor(10, 39, false);
+  view.reveal(39);
+  assert.equal(frame.scrollTop, view.rowHeight * 40 - frame.clientHeight);
+  view.reveal(0);
+  assert.equal(frame.scrollTop, 0);
+});
+
+test('a keyboard user lands on a cursor in the first row in view, and the mouse does not', () => {
+  const { view, canvas, hits } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  canvas.matches = () => false;
+  canvas.dispatchEvent(new window.FocusEvent('focus'));
+  assert.equal(view.cursor, null);
+  canvas.matches = () => true;
+  canvas.dispatchEvent(new window.FocusEvent('focus'));
+  assert.equal(view.cursor.row, 0);
+  assert.equal(hits.at(-1).announce, true);
+  canvas.dispatchEvent(new window.FocusEvent('focus'));
+  assert.equal(hits.at(-1).announce, true);
+});
+
 test('the cursor shades its row and marks its place, behind and in front of the traces', () => {
   const { view, canvas } = viewOf(twoRows());
   view.setView(0, 10, 1);

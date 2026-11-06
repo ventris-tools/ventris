@@ -180,6 +180,15 @@ test('moves through time from the keyboard', () => {
   press(position, 'Home');
 });
 
+test('the slider moves through the recording and says where it is', () => {
+  $('position').value = '25';
+  $('position').dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal($('position-text').textContent, '0:25 to 0:35');
+  assert.equal($('position').getAttribute('aria-valuetext'), '0:25 to 0:35');
+  assert.match($('traces').getAttribute('aria-label'), /from 0:25 to 0:35/);
+  press($('position'), 'Home');
+});
+
 test('the canvas keeps the arrow keys for its cursor', () => {
   const before = $('position').value;
   press($('traces'), 'ArrowRight');
@@ -321,6 +330,41 @@ test('marks a drag over the page and clears it on drop', async () => {
   assert.ok(document.body.classList.contains('dropping'));
   await open('night.edf');
   assert.ok(!document.body.classList.contains('dropping'));
+});
+
+test('clears the mark when a drag leaves the window, but not when it moves within it', () => {
+  const dragOver = new window.Event('dragover', { cancelable: true });
+  dragOver.dataTransfer = { types: ['Files'] };
+  window.dispatchEvent(dragOver);
+  const dragLeave = (relatedTarget) => {
+    const event = new window.Event('dragleave');
+    event.relatedTarget = relatedTarget;
+    window.dispatchEvent(event);
+  };
+  dragLeave(document.body);
+  assert.ok(document.body.classList.contains('dropping'));
+  dragLeave(null);
+  assert.ok(!document.body.classList.contains('dropping'));
+});
+
+test('opens the file chosen in the dialog, and lets the same file be chosen again', async () => {
+  const input = $('file-input');
+  Object.defineProperty(input, 'files', {
+    value: [fileOf('chosen.edf', edf())],
+    configurable: true,
+  });
+  input.dispatchEvent(new window.Event('change'));
+  await wait(0);
+  await wait(0);
+  assert.equal($('recording-name').textContent, 'chosen.edf');
+  assert.equal(input.value, '');
+});
+
+test('closing the file picker without a choice changes nothing', () => {
+  const input = $('file-input');
+  Object.defineProperty(input, 'files', { value: [], configurable: true });
+  input.dispatchEvent(new window.Event('change'));
+  assert.equal($('recording-name').textContent, 'chosen.edf');
 });
 
 test('sideways wheel movement scrolls time and takes the event', () => {
