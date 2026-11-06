@@ -82,6 +82,6 @@ BSD 3-Clause. See [LICENSE](LICENSE).
 
 The filter parsing in `js/edf.js` is adapted from [MNE-Python](https://mne.tools), which is also under BSD 3-Clause. See [licenses/MNE-Python.txt](licenses/MNE-Python.txt).
 
-The GitHub mark and the theme icons are from [Octicons](https://github.com/primer/octicons), under the MIT license. See [licenses/octicons.txt](licenses/octicons.txt).
+The GitHub mark and the help and theme icons are from [Octicons](https://github.com/primer/octicons), under the MIT license. See [licenses/octicons.txt](licenses/octicons.txt).
 
 The app uses a subset of [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), hosted here so that it makes no third-party requests. The font is under the SIL Open Font License. See [fonts/OFL.txt](fonts/OFL.txt).

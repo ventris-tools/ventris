@@ -22,10 +22,10 @@ jobs:
       - run: npm run format:check
       - run: npm run coverage
       - name: Build the site
-        run: mkdir _site && cp -R index.html styles.css favicon.svg js fonts LICENSE licenses _site/
-      - name: Check that the site has every file the page links to
+        run: mkdir _site && cp -R index.html help.html styles.css favicon.svg js fonts LICENSE licenses _site/
+      - name: Check that the site has every file the pages link to
         working-directory: _site
-        run: grep -oE '(src|href)="[^"#:]+"' index.html | cut -d'"' -f2 | xargs ls > /dev/null
+        run: grep -ohE '(src|href)="[^"#:]+"' index.html help.html | cut -d'"' -f2 | xargs ls > /dev/null
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name == 'push'
         with:

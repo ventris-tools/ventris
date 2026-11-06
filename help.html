@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The same policy as index.html, which explains what it does and doesn't stop. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="color-scheme" content="light dark">
+  <title>Help · Ventris</title>
+  <meta name="description" content="How to open an EEG recording in Ventris, read its traces and frequency bands, and move through it.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/JetBrainsMono-Medium.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="js/theme.js"></script>
+</head>
+<body>
+  <main class="help-page">
+    <a class="brand" href="index.html">
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+        <circle class="brand-disc" cx="16" cy="16" r="14"/>
+        <path class="brand-v" d="M9 11.5 16 23l7-11.5"/>
+      </svg>
+      <span>Ventris</span>
+    </a>
+
+    <h1>Help</h1>
+    <p>Ventris shows the signals and frequency bands of an EEG recording, right in your browser.</p>
+
+    <h2 id="privacy">Your recordings stay with you</h2>
+    <p>Everything runs in your browser, so your recordings never leave your computer. Nothing is uploaded.</p>
+
+    <h2 id="open">Open a recording</h2>
+    <p>Select Open a recording and choose an EDF or EDF+ file, or drop a file anywhere on the page.</p>
+    <p>The whole file is read into your browser's memory, so a very large recording may not open.</p>
+
+    <h2 id="demo">The demo</h2>
+    <p>Ventris opens on a demo. It's generated data for trying out Ventris, not a real recording.</p>
+    <p>A blink shows in Fp1 and Fp2, and alpha builds at the back of the head when the eyes close at 0:20.</p>
+
+    <h2 id="traces">Read the traces</h2>
+    <p>Each row is one channel. The ± figure under a channel's name is how far that row reaches either side of its middle.</p>
+    <p>Each row has its own ± range, so compare shapes rather than heights.</p>
+    <p>Point at a trace to read the recorded value at that moment.</p>
+
+    <h2 id="moving">Move through a recording</h2>
+    <table>
+      <tbody>
+        <tr><th scope="row">Window</th><td>Sets how much of the recording is on screen.</td></tr>
+        <tr><th scope="row">Trace size</th><td>Makes every trace smaller or larger. The ± figures change to match.</td></tr>
+        <tr><th scope="row">Slider</th><td>Moves through the recording.</td></tr>
+        <tr><th scope="row">Swipe</th><td>A sideways swipe on the traces moves through time. So does holding <kbd>Shift</kbd> while you scroll.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="keyboard">Keyboard</h2>
+    <p>Select the traces or the slider first.</p>
+    <table>
+      <tbody>
+        <tr><th scope="row"><kbd>Page Up</kbd> <kbd>Page Down</kbd></th><td>Move one window later or earlier.</td></tr>
+        <tr><th scope="row"><kbd>Home</kbd> <kbd>End</kbd></th><td>Go to the start or the end.</td></tr>
+        <tr><th scope="row">Arrow keys on the traces</th><td>Move the cursor to read values: left and right through time, up and down between channels.</td></tr>
+        <tr><th scope="row">Arrow keys on the slider</th><td>Move a tenth of a window.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="bands">Frequency bands</h2>
+    <p>Each bar is one band's share of the 1 to 30 Hz power in the window on screen, from Welch spectra averaged across the EEG channels. The bars update as you move.</p>
+    <p>The line under the bars gives that range and how many channels were averaged. Point at a row for a more exact figure.</p>
+    <p>Only EEG channels sampled at 64 Hz or faster are measured. If bands can't be measured, the line says why.</p>
+
+    <h2 id="annotations">Annotations</h2>
+    <p>Annotations in an EDF+ file appear on the time axis. Select one in the list to jump to it.</p>
+
+    <h2 id="time-domain">Time domain</h2>
+    <p>These figures cover the whole recording, pooled across the EEG channels. The line under them says how many. EEG channels in a different unit from the first one are left out.</p>
+    <table>
+      <tbody>
+        <tr><th scope="row">Overall SD</th><td>The standard deviation of all those samples together.</td></tr>
+        <tr><th scope="row">Lowest SD, Highest SD</th><td>The channels with the smallest and largest standard deviation, leaving out flat ones.</td></tr>
+        <tr><th scope="row">Flat channels</th><td>How many channels hold one value throughout.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="info">Info</h2>
+    <p>These details come from the file's header. They follow MNE-Python's EDF reader, so they usually match <code>mne.io.read_raw_edf</code>.</p>
+    <p>EOG, EMG and ECG channels are read from their labels and stay out of the EEG measures.</p>
+
+    <h2 id="theme">Light and dark</h2>
+    <p>Ventris follows your system's theme until you pick one with the switch next to Help. Your choice stays in this browser.</p>
+
+    <h2 id="limits">Limits</h2>
+    <ul>
+      <li>Ventris is a research tool, not a medical device.</li>
+      <li>BDF files aren't supported yet.</li>
+      <li>It doesn't filter, re-reference or export signals.</li>
+    </ul>
+
+    <h2 id="source">Source code</h2>
+    <p>Ventris is free and open source. <a href="https://github.com/ventris-tools/ventris">Read the code on GitHub</a>, or <a href="https://github.com/ventris-tools/ventris/issues">report a problem</a>.</p>
+  </main>
+</body>
+</html>

@@ -71,7 +71,7 @@ export function demoRecording() {
       { time: 20, duration: 0, text: 'Eyes closed' },
       { time: 40, duration: 0, text: 'Eyes open' },
     ],
-    warnings: ['This is generated data for trying out Ventris, not a real recording.'],
+    warnings: [],
     info: {
       date: null,
       time: null,

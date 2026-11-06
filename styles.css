@@ -85,11 +85,13 @@ button, select, input { font: inherit; }
 .viewer {
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr) 232px;
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100dvh;
 }
 
 /* Clipped because the canvases keep their old width for a moment after the window narrows. */
 .trace-panel {
+  grid-area: 1 / 2 / -1 / 3;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -166,10 +168,15 @@ input[type="range"] {
   overflow-y: auto;
 }
 
-.panel-controls { border-right: 1px solid var(--line); }
+.panel-controls { grid-area: 1 / 1; border-right: 1px solid var(--line); }
 
 /* Positioned so its hidden table caption scrolls inside the panel, not the page. */
-.panel-info { position: relative; gap: 0; border-left: 1px solid var(--line); }
+.panel-info {
+  grid-area: 1 / 3 / -1 / 4;
+  position: relative;
+  gap: 0;
+  border-left: 1px solid var(--line);
+}
 
 .recording-title { padding-bottom: 10px; }
 
@@ -223,32 +230,44 @@ h3 {
   line-height: 1.4;
 }
 
-.masthead {
+/* The logo and name stand alone. Everything else about the site sits in the footer. */
+.masthead { display: flex; align-items: center; min-height: 28px; }
+
+.site-footer {
+  grid-area: 2 / 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 8px;
+  border-top: 1px solid var(--line);
+  border-right: 1px solid var(--line);
 }
 
-.site-tools { display: flex; flex: none; margin-right: -6px; }
+.site-tools { display: flex; align-items: center; margin-right: -5px; }
 
-.github-link, .theme-toggle {
+.tool {
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  gap: 6px;
+  min-width: 28px;
   height: 28px;
   padding: 0;
   border: 0;
   border-radius: 6px;
   background: none;
   color: var(--ink-2);
+  font-size: var(--text-sm);
+  text-decoration: none;
   cursor: pointer;
 }
 
-.github-link:hover, .theme-toggle:hover { color: var(--ink); }
+.tool:hover { color: var(--ink); }
 
-.github-link svg, .theme-toggle svg { fill: currentColor; }
+.tool svg { fill: currentColor; }
+
+.help-link { margin-right: auto; }
 
 /* The switch shows where it will take you: a moon in light mode, a sun in dark. */
 .theme-toggle .to-light { display: none; }
@@ -371,7 +390,7 @@ th span {
   text-align: right;
 }
 
-.section-note { margin-top: 8px; }
+.section-note { margin-top: 8px; font-size: var(--text-xs); }
 
 .annotations { margin: 0; padding: 0; list-style: none; }
 
@@ -392,8 +411,6 @@ th span {
 .annotations button:hover { color: var(--accent); }
 
 .annotations span { color: var(--ink-2); }
-
-.disclaimer { margin-top: auto; }
 
 .error { margin-top: 12px; color: var(--error); font-weight: 500; }
 
@@ -455,15 +472,53 @@ noscript .error { margin: 16px; }
 
 .loader-demo {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
+  justify-content: flex-end;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
-  color: var(--ink-2);
+}
+
+.help-page {
+  max-width: 44rem;
+  margin-inline: auto;
+  padding: 24px 16px 48px;
   font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.help-page a { color: var(--accent); }
+
+.help-page .brand { color: inherit; text-decoration: none; }
+
+.help-page h1 { margin-top: 24px; font-size: var(--text-xl); }
+
+.help-page h2 { margin-top: 28px; font-size: var(--text-lg); }
+
+.help-page p { margin-top: 8px; }
+
+.help-page ul { margin: 8px 0 0; padding-left: 20px; }
+
+.help-page table { margin-top: 10px; }
+
+.help-page th, .help-page td {
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  font-size: inherit;
+  line-height: 1.5;
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-page th { width: 34%; padding-right: 16px; }
+
+kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--control-line);
+  border-radius: 4px;
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
 }
 
 @media (hover: none) {
@@ -472,7 +527,8 @@ noscript .error { margin: 16px; }
 
 /* Too narrow for side panels: controls on top, traces, then details. */
 @media (max-width: 960px) {
-  .viewer { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .viewer { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; }
+  .panel-controls, .trace-panel, .panel-info, .site-footer { grid-area: auto; }
   .trace-frame { flex: none; height: 56vh; min-height: 240px; }
   .position { height: 44px; }
   .panel { border-inline: 0; }
@@ -492,8 +548,18 @@ noscript .error { margin: 16px; }
   }
 
   .masthead { flex: 1 1 calc(100% - 152px); }
-  .github-link, .theme-toggle { width: 40px; height: 44px; }
   .open-recording { flex: none; width: 140px; }
   .panel-controls .control { flex: 1 1 40%; }
-  .panel-controls .note { flex: 1 1 100%; margin-top: 0; }
+
+  .site-footer {
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0 16px;
+    padding: 4px 12px;
+    border-right: 0;
+  }
+
+  .site-tools { flex: 1 1 auto; }
+  .tool { min-width: 40px; height: 44px; }
 }

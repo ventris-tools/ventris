@@ -31,7 +31,6 @@ const chooseButton = $('choose-file');
 const chooseLabel = $('choose-label');
 const demoButton = $('show-demo');
 const demoOffer = $('demo-offer');
-const demoFlag = $('demo-flag');
 const fileInput = $('file-input');
 const errorBox = $('error');
 const nameHeading = $('recording-name');
@@ -130,7 +129,7 @@ function showDetails(recording) {
   const stats = timeStats(recording.channels);
   fillRows($('time-rows'), stats ? timeRows(stats) : []);
   $('time-note').textContent = stats
-    ? `Whole recording, across ${count(stats.channels, 'EEG channel')}.`
+    ? `Whole file · ${count(stats.channels, 'EEG channel')}`
     : BAND_PROBLEMS['no-eeg'];
 }
 
@@ -164,7 +163,7 @@ function showBands({ shares, channels, reason }) {
     row.title = shares ? `${name}: ${(share * 100).toFixed(1)}% of ${BAND_RANGE} power` : '';
   });
   bandNote.textContent = shares
-    ? `Share of ${BAND_RANGE} power in this window, averaged over ${count(channels, 'EEG channel')}.`
+    ? `${BAND_RANGE} · ${count(channels, 'EEG channel')}`
     : BAND_PROBLEMS[reason];
 }
 
@@ -229,8 +228,7 @@ function show(recording, name, start = 0) {
   viewer.hidden = false;
   state.start = start;
   state.gain = 1;
-  demoFlag.hidden = recording.format !== 'Synthetic';
-  demoOffer.hidden = !demoFlag.hidden;
+  demoOffer.hidden = recording.format === 'Synthetic';
   updateGainButtons();
   nameHeading.textContent = name;
   showDetails(recording);
