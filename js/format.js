@@ -35,8 +35,10 @@ export function amount(value, unit, decimals = 1) {
   return `${signed} ${unitLabel(unit)}`.trim();
 }
 
+// One formatter for every row of every frame, as making one is what takes the time.
+const rangeNumber = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 2 });
+
 // How far a row reaches either side of its middle.
 export function rowRange(value, unit) {
-  const number = value.toLocaleString('en-US', { maximumSignificantDigits: 2 });
-  return `±${number} ${unitLabel(unit)}`.trim();
+  return `±${rangeNumber.format(value)} ${unitLabel(unit)}`.trim();
 }

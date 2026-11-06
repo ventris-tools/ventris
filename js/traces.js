@@ -21,6 +21,7 @@ const RANGE_SIZE = 10;
 // How much of a half row a trace two spreads high fills at normal size.
 const ROW_FILL = 0.55;
 
+const SPREAD_SAMPLES = 8192;
 const BASELINE_SECONDS = 30;
 const BASELINE_SAMPLES = 128;
 
@@ -49,17 +50,25 @@ function deviation(data) {
   return Math.sqrt(squares / data.length);
 }
 
+// Evenly spaced samples from part of a channel, sorted. A typed array sorts by value on its own,
+// which is far faster than an array with a comparison function.
+function sortedSample(data, from, to, wanted) {
+  const stride = Math.max(1, Math.floor((to - from) / wanted));
+  const sample = new Float64Array(Math.ceil((to - from) / stride));
+  for (let i = 0; i < sample.length; i += 1) sample[i] = data[from + i * stride];
+  return sample.sort();
+}
+
+const middle = (sorted) => sorted[sorted.length >> 1];
+
 // Median absolute deviation, so a blink does not shrink a whole channel. A channel that
 // rests on one value for most of a recording has none, and the standard deviation takes
 // over so that its bursts still show.
 export function robustSpread(data) {
-  const stride = Math.max(1, Math.floor(data.length / 8192));
-  const sample = [];
-  for (let i = 0; i < data.length; i += stride) sample.push(data[i]);
-  sample.sort((a, b) => a - b);
-  const median = sample[sample.length >> 1];
-  const deviations = sample.map((value) => Math.abs(value - median)).sort((a, b) => a - b);
-  return 1.4826 * deviations[deviations.length >> 1] || deviation(data);
+  const sample = sortedSample(data, 0, data.length, SPREAD_SAMPLES);
+  const median = middle(sample);
+  const deviations = sample.map((value) => Math.abs(value - median)).sort();
+  return 1.4826 * middle(deviations) || deviation(data);
 }
 
 // A channel's slow level: the median of each block of the recording, so a blink counts for
@@ -71,11 +80,7 @@ export function baseline(data, fs) {
   for (let index = 0; index < levels.length; index += 1) {
     const from = index * block;
     const to = Math.min(data.length, from + block);
-    const stride = Math.max(1, Math.floor((to - from) / BASELINE_SAMPLES));
-    const sample = [];
-    for (let i = from; i < to; i += stride) sample.push(data[i]);
-    sample.sort((a, b) => a - b);
-    levels[index] = sample[sample.length >> 1];
+    levels[index] = middle(sortedSample(data, from, to, BASELINE_SAMPLES));
   }
   return { levels, block };
 }
