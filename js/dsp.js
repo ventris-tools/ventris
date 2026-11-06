@@ -17,6 +17,22 @@ const MIN_SAMPLE_RATE = 64;
 // Enough for a stable estimate, however long the window is.
 const MAX_SEGMENTS = 256;
 
+// The mean, extremes and spread of one signal.
+export function signalStats(data) {
+  let sum = 0;
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  for (let i = 0; i < data.length; i += 1) {
+    sum += data[i];
+    if (data[i] < minimum) minimum = data[i];
+    if (data[i] > maximum) maximum = data[i];
+  }
+  const mean = sum / data.length;
+  let squares = 0;
+  for (let i = 0; i < data.length; i += 1) squares += (data[i] - mean) ** 2;
+  return { mean, squares, minimum, maximum, deviation: Math.sqrt(squares / data.length) };
+}
+
 // Amplitude across the whole recording, pooled over the EEG channels that share the
 // first one's unit. Returns null when there are no EEG channels.
 export function timeStats(channels) {
@@ -26,21 +42,7 @@ export function timeStats(channels) {
 
   const measured = eeg
     .filter((channel) => channel.unit === unit)
-    .map(({ label, data }) => {
-      let sum = 0;
-      let minimum = Infinity;
-      let maximum = -Infinity;
-      for (let i = 0; i < data.length; i += 1) {
-        sum += data[i];
-        if (data[i] < minimum) minimum = data[i];
-        if (data[i] > maximum) maximum = data[i];
-      }
-      const mean = sum / data.length;
-      let squares = 0;
-      for (let i = 0; i < data.length; i += 1) squares += (data[i] - mean) ** 2;
-      const deviation = Math.sqrt(squares / data.length);
-      return { label, count: data.length, mean, squares, minimum, maximum, deviation };
-    })
+    .map(({ label, data }) => ({ label, count: data.length, ...signalStats(data) }))
     .sort((a, b) => a.deviation - b.deviation);
 
   const total = measured.reduce((sum, { count }) => sum + count, 0);

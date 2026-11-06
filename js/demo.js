@@ -2,6 +2,8 @@
 // head between 20 and 40 seconds, which is what closing your eyes does. It contains no
 // real person's data, and says so wherever a real file shows its details.
 
+import { NO_SUBJECT } from './edf.js';
+
 const SAMPLE_RATE = 256;
 const SECONDS = 60;
 const BLINKS = [6, 14, 47, 55];
@@ -73,15 +75,7 @@ export function demoRecording() {
     info: {
       date: null,
       time: null,
-      subject: {
-        id: null,
-        name: null,
-        sex: null,
-        birthday: null,
-        hand: null,
-        height: null,
-        weight: null,
-      },
+      subject: NO_SUBJECT,
       project: null,
       experimenter: null,
       device: null,

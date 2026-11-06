@@ -1,6 +1,7 @@
 // Draws scrolling EEG traces on a canvas, one row per channel. The time axis has a canvas
 // of its own below them, so it stays in view however far the rows scroll.
 
+import { signalStats } from './dsp.js';
 import { formatClock, rowRange } from './format.js';
 
 export const GAIN_LIMITS = [0.2, 12];
@@ -39,16 +40,7 @@ const CURSOR_KEYS = {
   ArrowDown: [0, 1],
 };
 
-const clamp = (value, lowest, highest) => Math.min(highest, Math.max(lowest, value));
-
-function deviation(data) {
-  let sum = 0;
-  for (let i = 0; i < data.length; i += 1) sum += data[i];
-  const mean = sum / data.length;
-  let squares = 0;
-  for (let i = 0; i < data.length; i += 1) squares += (data[i] - mean) ** 2;
-  return Math.sqrt(squares / data.length);
-}
+export const clamp = (value, lowest, highest) => Math.min(highest, Math.max(lowest, value));
 
 // Evenly spaced samples from part of a channel, sorted. A typed array sorts by value on its own,
 // which is far faster than an array with a comparison function.
@@ -68,7 +60,7 @@ export function robustSpread(data) {
   const sample = sortedSample(data, 0, data.length, SPREAD_SAMPLES);
   const median = middle(sample);
   const deviations = sample.map((value) => Math.abs(value - median)).sort();
-  return 1.4826 * middle(deviations) || deviation(data);
+  return 1.4826 * middle(deviations) || signalStats(data).deviation;
 }
 
 // A channel's slow level: the median of each block of the recording, so a blink counts for

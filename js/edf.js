@@ -6,7 +6,20 @@
 // cutoff() and the choice of filter in parseFilters() are adapted from MNE-Python
 // (mne/io/edf/edf.py), under the BSD 3-Clause license. See licenses/MNE-Python.txt.
 
+import { twoDigits } from './format.js';
+
 export class EdfError extends Error {}
+
+// A recording that says nothing about its participant.
+export const NO_SUBJECT = {
+  id: null,
+  name: null,
+  sex: null,
+  birthday: null,
+  hand: null,
+  height: null,
+  weight: null,
+};
 
 const HEADER_BYTES = 256;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -47,8 +60,7 @@ function isoDate(year, month, day) {
   const date = new Date(Date.UTC(year, month - 1, day));
   const real = date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
   if (!real) return null;
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${year}-${pad(month)}-${pad(day)}`;
+  return `${year}-${twoDigits(month)}-${twoDigits(day)}`;
 }
 
 // 02-MAY-1951
@@ -58,41 +70,38 @@ function longDate(value = '') {
   return month ? isoDate(Number(match[3]), month, Number(match[1])) : null;
 }
 
+// The three numbers of a header field that writes them between dots.
+function dotted(value) {
+  const match = /^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/.exec(value);
+  return match ? match.slice(1).map(Number) : null;
+}
+
 // 12.08.09. EDF counts two-digit years from 1985.
 function shortDate(value) {
-  const match = /^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/.exec(value);
-  if (!match) return null;
-  const year = Number(match[3]);
-  return isoDate(year < 85 ? 2000 + year : 1900 + year, Number(match[2]), Number(match[1]));
+  const parts = dotted(value);
+  if (!parts) return null;
+  const [day, month, year] = parts;
+  return isoDate(year < 85 ? 2000 + year : 1900 + year, month, day);
 }
 
 // 16.15.00
 function clockTime(value) {
-  const match = /^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/.exec(value);
-  if (!match) return null;
-  const [hours, minutes, seconds] = match.slice(1).map(Number);
+  const parts = dotted(value);
+  if (!parts) return null;
+  const [hours, minutes, seconds] = parts;
   if (hours > 23 || minutes > 59 || seconds > 59) return null;
-  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+  return parts.map(twoDigits).join(':');
 }
 
 // EDF+ form: code, sex, birth date, name, then optional hand=, height= and weight=.
 // Plain EDF allows any text, so whatever does not fit that form is kept whole.
 function parseSubject(field) {
   const parts = field.split(/\s+/);
-  const subject = {
-    id: null,
-    name: null,
-    sex: null,
-    birthday: null,
-    hand: null,
-    height: null,
-    weight: null,
-  };
   const fits =
     parts.length >= 4 &&
     /^[MFX]$/.test(parts[1]) &&
     (parts[2] === 'X' || longDate(parts[2]) !== null);
-  if (!fits) return { ...subject, id: known(field) };
+  if (!fits) return { ...NO_SUBJECT, id: known(field) };
 
   const extras = Object.fromEntries(parts.slice(4).map((part) => part.split('=')));
   return {

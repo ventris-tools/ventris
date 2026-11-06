@@ -15,7 +15,7 @@ const hertz = (value) => `${rate(value)} Hz`;
 const optional = (label, value, suffix = '') =>
   value === null ? [] : [[label, `${value}${suffix}`]];
 
-export function infoGroups({ channels, duration, format, info, annotations = [] }) {
+export function infoGroups({ channels, duration, format, info, annotations }) {
   const { subject } = info;
   const rates = channels.map(({ fs }) => fs);
   const lowest = Math.min(...rates);

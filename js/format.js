@@ -6,6 +6,8 @@ export const unitLabel = (unit) => unit.replace(/^u(?=V$)/, 'µ');
 
 export const count = (number, noun) => `${number} ${noun}${number === 1 ? '' : 's'}`;
 
+export const twoDigits = (value) => String(value).padStart(2, '0');
+
 // A time as m:ss or h:mm:ss, with fractions of a second when decimals asks for them.
 export function formatClock(seconds, decimals = 0) {
   const scale = 10 ** decimals;
@@ -13,10 +15,10 @@ export function formatClock(seconds, decimals = 0) {
   const whole = Math.floor(ticks / scale);
   const hours = Math.floor(whole / 3600);
   const minutes = Math.floor((whole % 3600) / 60);
-  const rest = String(whole % 60).padStart(2, '0');
+  const rest = twoDigits(whole % 60);
   const fraction = decimals > 0 ? `.${String(ticks % scale).padStart(decimals, '0')}` : '';
   return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}${fraction}`
+    ? `${hours}:${twoDigits(minutes)}:${rest}${fraction}`
     : `${minutes}:${rest}${fraction}`;
 }
 

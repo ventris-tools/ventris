@@ -2,17 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { demoRecording } from '../js/demo.js';
 import { timeStats } from '../js/dsp.js';
+import { NO_SUBJECT } from '../js/edf.js';
 import { infoGroups, timeRows } from '../js/info.js';
-
-const subject = {
-  id: null,
-  name: null,
-  sex: null,
-  birthday: null,
-  hand: null,
-  height: null,
-  weight: null,
-};
 
 function recording(
   info = {},
@@ -22,11 +13,12 @@ function recording(
     format: 'EDF+',
     duration: 61,
     channels,
+    annotations: [],
     warnings: [],
     info: {
       date: '2009-08-12',
       time: '16:15:00',
-      subject,
+      subject: NO_SUBJECT,
       project: null,
       experimenter: null,
       device: null,
@@ -61,7 +53,7 @@ test('adds participant, device and notch rows when the file has them', () => {
   const { general, filters } = infoGroups(
     recording({
       subject: {
-        ...subject,
+        ...NO_SUBJECT,
         id: 'P1',
         name: 'Ann Lee',
         sex: 'Female',
