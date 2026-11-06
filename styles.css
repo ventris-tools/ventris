@@ -91,6 +91,7 @@ h1, h2, h3, p { margin: 0; }
 }
 
 .trace-frame {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -99,7 +100,14 @@ h1, h2, h3, p { margin: 0; }
 
 canvas { display: block; }
 
-.traces { touch-action: pan-y; cursor: crosshair; }
+/* Positioned so that the cursor's marks stack by document order: shading behind, line in front. */
+.traces { position: relative; touch-action: pan-y; cursor: crosshair; }
+
+.cursor-row, .cursor-line { position: absolute; top: 0; pointer-events: none; }
+
+.cursor-row { background: var(--grid); }
+
+.cursor-line { width: 1px; background: var(--accent); }
 
 /* The frame clips anything outside it, so the ring sits inside the canvas. */
 .traces:focus-visible { outline-offset: -2px; }

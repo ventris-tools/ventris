@@ -141,6 +141,16 @@ const oneChannel = (data, fs = 256) => ({
   duration: data.length / fs,
 });
 
+const twoRows = () => ({
+  channels: ['Cz', 'Pz'].map((label) => ({
+    label,
+    unit: 'uV',
+    fs: 256,
+    data: new Float32Array(2560),
+  })),
+  duration: 10,
+});
+
 test('draws a burst on a channel that mostly rests on one value', () => {
   const { view, canvas } = viewOf(oneChannel(sparse()));
   view.setView(45, 10, 1);
@@ -276,4 +286,63 @@ test('the mouse reads a value and leaving clears it', () => {
   assert.equal(hits.at(-1).announce, false);
   canvas.dispatchEvent(new window.MouseEvent('pointerleave'));
   assert.equal(hits.at(-1).hit, null);
+});
+
+test('the cursor shades its row and marks its place, behind and in front of the traces', () => {
+  const { view, canvas } = viewOf(twoRows());
+  view.setView(0, 10, 1);
+  const shading = canvas.previousElementSibling;
+  const line = canvas.nextElementSibling;
+  assert.deepEqual([shading.hidden, line.hidden], [true, true]);
+
+  view.moveCursor(100.4, 1, false);
+  assert.deepEqual([shading.hidden, line.hidden], [false, false]);
+  assert.equal(shading.style.top, `${view.rowHeight}px`);
+  assert.equal(shading.style.height, `${view.rowHeight}px`);
+  assert.equal(shading.style.left, `${view.gutter}px`);
+  assert.equal(shading.style.width, `${view.plotWidth()}px`);
+  assert.equal(line.style.left, `${Math.round(view.gutter + 100.4)}px`);
+  assert.equal(line.style.height, `${view.rowHeight * 2}px`);
+
+  view.leave();
+  assert.deepEqual([shading.hidden, line.hidden], [true, true]);
+});
+
+test('pointing at a trace redraws nothing', async () => {
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const context = canvas.getContext('2d');
+  context.calls.length = 0;
+  view.moveCursor(100, 0, false);
+  view.leave();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(context.calls, []);
+});
+
+test('the cursor follows the rows when the view changes size', () => {
+  const { view, canvas } = viewOf(twoRows());
+  view.setView(0, 10, 1);
+  view.moveCursor(100, 1, false);
+  const before = view.rowHeight;
+  Object.defineProperty(canvas.parentElement, 'clientHeight', { value: 2000 });
+  view.resize();
+  assert.ok(view.rowHeight > before);
+  assert.equal(canvas.previousElementSibling.style.top, `${view.rowHeight}px`);
+});
+
+test('a new recording draws only once its window arrives', () => {
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  const context = canvas.getContext('2d');
+  context.calls.length = 0;
+  view.setRecording({ annotations: [], ...oneChannel(new Float32Array(2560)) });
+  assert.deepEqual(called(canvas, 'clearRect'), []);
+});
+
+test('a new recording removes the cursor from the screen', () => {
+  const { view, canvas } = viewOf(oneChannel(new Float32Array(2560)));
+  view.setView(0, 10, 1);
+  view.moveCursor(100, 0, false);
+  view.setRecording({ annotations: [], ...oneChannel(new Float32Array(2560)) });
+  assert.equal(canvas.nextElementSibling.hidden, true);
 });
