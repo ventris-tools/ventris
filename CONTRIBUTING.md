@@ -82,7 +82,7 @@ Only the files the app needs are published. A new top-level file has to be added
 
 ## Update the fonts
 
-`fonts/` holds JetBrains Mono cut down to Latin and Greek, without its ligatures and alternate letters, which makes it about a fifth of the size. Other scripts fall back to the system's monospace font.
+`fonts/` holds JetBrains Mono, served from Ventris itself so that the page makes no third-party requests. It's cut down to Latin and Greek, without its ligatures and alternate letters, which makes it about a fifth of the size. Other scripts fall back to the system's monospace font.
 
 To change that, install the tool, then run this on the TTF files from a [JetBrains Mono release](https://github.com/JetBrains/JetBrainsMono/releases), once for Regular and once for Medium.
 
@@ -111,11 +111,13 @@ Put a copied license in `licenses/`, and name it in a comment beside the code, a
 
 This rule covers code. You can still write your own version from a published paper or a format specification.
 
-Fonts and other assets keep their own licenses. Put the license file next to the asset and mention it in the README, as `fonts/OFL.txt` does for JetBrains Mono.
+Fonts and other assets keep their own licenses. Put the license file next to the asset, as `fonts/OFL.txt` is for JetBrains Mono.
+
+List everything that comes with its own license in [licenses/README.md](licenses/README.md).
 
 ## Keeping recordings private
 
-The README promises that a recording never leaves the computer. Two checks protect that promise:
+The README promises that a recording never leaves the computer. The Content Security Policy blocks XHR, WebSockets and loads from other hosts, and fetch everywhere but the two places below, but it can't stop navigation or WebRTC, so the promise rests on the code too. Two checks protect it:
 
 - ESLint rejects network calls and navigation in `js/`. The one exception is `fetch` in `js/remote.js`, which downloads a public recording opened by link and sends nothing of its own.
 - `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help.html` changes. The policy in `index.html` lets `fetch` reach only the two places named in `js/remote.js`: OpenNeuro's public bucket and NEMAR's datasets on GitHub, each limited to its own folder.

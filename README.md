@@ -2,108 +2,67 @@
 
 **Look inside an EEG recording in seconds, right in your browser.**
 
-No install, no account and no upload. Your signals, frequency bands, annotations and header details, all on one screen.
+Open an EDF, EDF+ or CSV file to see its signals, frequency bands, annotations and header details on one screen. There's nothing to install, and the file never leaves your computer.
 
-**[Open Ventris](https://ventris-tools.github.io/ventris/)** and drop in an EDF or CSV file, paste a link to a public recording on NEMAR or OpenNeuro, or try the built-in demo.
+**[Open Ventris](https://ventris-tools.github.io/ventris/)** and drop in a recording, paste a link to a public one on NEMAR, or start with the built-in demo.
 
 [![Ventris showing eight EEG channels, with frequency band shares and recording details beside the traces](docs/screenshot.png)](https://ventris-tools.github.io/ventris/)
 
-*The built-in demo, which is synthetic data. A blink shows in Fp1 and Fp2, and alpha builds at the back of the head when the eyes close at 0:20.*
+*The demo is synthetic: a blink shows in Fp1 and Fp2, and alpha builds at the back of the head when the eyes close at 0:20.*
 
-## Why Ventris
+## What it's for
 
-Most EEG work starts with a simple question: what's in this file, and is it any good? Answering that shouldn't take a Python environment, a MATLAB license or a script.
+Ventris is the quick look before MNE-Python, EEGLAB or FieldTrip: what's in this file, and is it any good?
 
-- **Nothing to set up.** Ventris is a web page, so it works on any computer with a modern browser, including ones you can't install software on.
-- **Your data stays with you.** Your browser reads the file on your own computer, and nothing is uploaded.
-- **It fits your pipeline.** Ventris doesn't replace MNE-Python, EEGLAB or FieldTrip. It's the quick look before them, and its header fields follow MNE-Python's EDF reader, so the details usually match `mne.io.read_raw_edf`.
-- **It's open source.** Ventris is free under the BSD 3-Clause license, and you can read every line of it.
+- **Check a session while you can still redo it.** Spot flat channels, noisy channels and artifacts.
+- **Size up a dataset you didn't record.** Read its sample rate, channels, filters and duration before you write any code. EDF header fields follow MNE-Python's reader, so they usually match `mne.io.read_raw_edf`.
+- **Find your events.** Jump between annotations and check that they line up with the signal.
+- **Browse public datasets.** Open a recording from a NEMAR dataset by its GitHub link, with nothing to download or clone.
+- **Teach.** The demo shows a blink and eyes-closed alpha, with nothing for students to install.
 
-## What it's good for
-
-- **Checking a recording right after a session.** Spot flat channels, noisy channels and artifacts while you can still do something about them.
-- **Opening a file you didn't record.** See the sample rate, channels, filter settings and duration of a shared or public dataset before you write any code. That includes datasets shared as CSV, such as Lab Streaming Layer recordings.
-- **Browsing public datasets.** Open a recording from a NEMAR dataset by its GitHub link, with nothing to download or clone first.
-- **Finding your events.** Jump between the annotations in an EDF+ file and check that they line up with the signal.
-- **Teaching.** The demo shows a blink and eyes-closed alpha, with no data to find and nothing for students to install.
-
-## What it shows
-
-| View | What you get |
-|---|---|
-| Traces | Choose a window of 5 seconds or longer, and move through the recording with the slider, a swipe or the keyboard. Drag a box to zoom to a stretch of time and a few channels, and double-click to zoom back out. Point at a trace to read the recorded value at that moment. |
-| Frequency bands | The share of 1 to 30 Hz power in delta, theta, alpha and beta for the window on screen, from Welch spectra averaged across the EEG channels. It updates as you move. |
-| Annotations | EDF+ annotations and the marker column of a CSV file appear on the time axis, each kind in its own colour. Select one in the list to jump to it. |
-| Time domain | Mean, range and standard deviation across the whole recording, the channels with the lowest and highest SD, and a count of flat channels. |
-| Recording details | Start time, participant, device, sample rates, channel names and filter settings from the header. EOG, EMG and ECG channels are read from their labels and stay out of the EEG measures. |
+The [help page](https://ventris-tools.github.io/ventris/help.html) explains each panel and what it measures.
 
 ## Open a public recording by link
 
-Ventris can open a recording from a [NEMAR](https://nemar.org) dataset straight from its page on GitHub. Find the file in a repository of the [nemarDatasets](https://github.com/nemarDatasets) organization, copy the address from your browser, and paste it into Ventris under **Open a recording**. For example:
+Paste the GitHub address of a recording in a [NEMAR](https://nemar.org) dataset under **Open a recording**, such as:
 
 ```text
 https://github.com/nemarDatasets/on003194/blob/main/sub-NEPO01/ses-Nepopre/eeg/sub-NEPO01_ses-Nepopre_task-taskprenepo_eeg.edf
 ```
 
-The address bar then links to that recording, so you can share the view or come back to it. A link to the same file in OpenNeuro's public bucket on Amazon S3, starting `https://s3.amazonaws.com/openneuro.org/`, works too.
+GitHub keeps only a small pointer for each file, so Ventris downloads the recording from OpenNeuro's public copy and checks it against the size and SHA-256 hash in the pointer. The address bar then links to the recording, so you can share the view.
 
-GitHub keeps only a small pointer for each recording, so Ventris downloads the file itself from OpenNeuro's copy on S3. It checks the download against the size and SHA-256 hash in the pointer, so what you see is the version the link names.
-
-What works today:
-
-- **Datasets NEMAR mirrors from OpenNeuro**, whose names start with `on`. Over a hundred of them hold EDF files.
-- **Not yet NEMAR's own datasets**, whose names start with `nm`. Their files are public, but their storage doesn't let a web page download them.
-- **EDF files only.** CSV opens from your computer, but public datasets on NEMAR store EEG as EDF, BDF, BrainVision or EEGLAB files.
+This works for EDF files in the datasets NEMAR mirrors from OpenNeuro, whose names start with `on`. NEMAR's own datasets, starting `nm`, don't open yet, because their storage doesn't let a web page download them. The [help page](https://ventris-tools.github.io/ventris/help.html#links) lists the links that work.
 
 ## Your recordings stay on your computer
 
-EEG recordings are sensitive, so you shouldn't have to upload one just to look at it.
+Your browser reads the file, and Ventris has no code that sends it anywhere. Its Content Security Policy also blocks XHR and WebSocket connections to other hosts, and lets fetch reach only the two places a public recording comes from: OpenNeuro's bucket on S3 and NEMAR's datasets on GitHub. Watch your browser's network panel while a file opens to see for yourself, or read the code.
 
-Everything in Ventris runs in your browser. The app has no code that sends a recording anywhere. The page's Content Security Policy backs this up by blocking XHR, WebSockets and loads from other hosts, and by letting `fetch` reach only OpenNeuro's public bucket on S3 and NEMAR's datasets on GitHub. It cannot stop navigation or WebRTC, so the promise rests on the code as well. You can watch your browser's network panel while a file opens, and read the code yourself.
+Opening a recording by link is the one time Ventris uses the network. It downloads that file and nothing else, and Amazon and GitHub see your IP address and which file you asked for.
 
-Opening a public recording by link is the one time Ventris uses the network. It downloads that file and nothing else, without cookies or a referrer. Amazon and GitHub see your IP address and which file you asked for, as they would if you downloaded it yourself.
+## Limits
+
+Ventris is an early preview. It's a research tool, not a medical device.
+
+- BDF files aren't supported yet.
+- A CSV file needs a header row and a column of times.
+- It doesn't filter, re-reference or export signals.
+- The whole file is read into memory, so a very large recording may not open.
+
+Live streaming from EEG headsets is next. If Ventris is missing something you need, [open an issue](https://github.com/ventris-tools/ventris/issues).
 
 ## Run it locally
 
-The hosted page is all most people need. You can also run your own copy, which needs no internet connection once it's downloaded, except to open a recording by link. There's no build step and there are no runtime dependencies.
+There's no build step and there are no dependencies, so any static file server runs a copy, and it works offline apart from opening a recording by link:
 
 ```bash
 git clone https://github.com/ventris-tools/ventris.git
-```
-
-```bash
 cd ventris
-```
-
-```bash
 python3 -m http.server 4173
 ```
 
 Then open <http://localhost:4173>.
 
-## Where it stands
+---
 
-Ventris is an early preview, and today it's a viewer for EDF, EDF+ and CSV files:
-
-- BDF files aren't supported yet.
-- A CSV file needs a header row and a column of times. Help lists what it reads.
-- It doesn't filter, re-reference or export signals.
-- The whole file is read into your browser's memory, so a very large recording may not open.
-
-Live streaming from EEG headsets is the next goal. If Ventris is missing something you need, [open an issue](https://github.com/ventris-tools/ventris/issues).
-
-Ventris is a research tool, not a medical device.
-
-## Contributing
-
-To work on Ventris itself, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-BSD 3-Clause. See [LICENSE](LICENSE).
-
-The filter parsing in `js/edf.js` is adapted from [MNE-Python](https://mne.tools), which is also under BSD 3-Clause. See [licenses/MNE-Python.txt](licenses/MNE-Python.txt).
-
-The GitHub mark and the help and theme icons are from [Octicons](https://github.com/primer/octicons), under the MIT license. See [licenses/octicons.txt](licenses/octicons.txt).
-
-The app uses a subset of [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), hosted here so that it makes no third-party requests. The font is under the SIL Open Font License. See [fonts/OFL.txt](fonts/OFL.txt).
+Ventris is open source under the [BSD 3-Clause license](LICENSE). To work on it, see [CONTRIBUTING.md](CONTRIBUTING.md).
