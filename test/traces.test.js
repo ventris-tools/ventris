@@ -4,11 +4,14 @@ import {
   baseline,
   eventColors,
   levelAt,
+  MIN_ZOOM,
   robustSpread,
   sidewaysPixels,
   tickStep,
   TraceView,
   windowChoices,
+  zoomAxes,
+  zoomSpan,
 } from '../js/traces.js';
 import { installDom } from './support/dom.js';
 
@@ -104,6 +107,46 @@ test('spaces ticks by the width of their labels', () => {
   assert.equal(tickStep(28800, 1000, 40), 1800);
 });
 
+test('ticks a short zoom in tenths of a second', () => {
+  assert.equal(tickStep(0.5, 800, 42), 0.1);
+  assert.equal(tickStep(2, 800, 42), 0.2);
+});
+
+test('a flat drag zooms time alone, even when it strays a little', () => {
+  assert.deepEqual(zoomAxes(300, 0), { time: true, channels: false });
+  assert.deepEqual(zoomAxes(300, 19), { time: true, channels: false });
+  assert.deepEqual(zoomAxes(10, 5), { time: true, channels: false });
+});
+
+test('a narrow drag zooms channels alone', () => {
+  assert.deepEqual(zoomAxes(0, 100), { time: false, channels: true });
+  assert.deepEqual(zoomAxes(19, 300), { time: false, channels: true });
+  assert.deepEqual(zoomAxes(5, 10), { time: false, channels: true });
+});
+
+test('a box zooms both ways, and a click neither', () => {
+  assert.deepEqual(zoomAxes(300, 20), { time: true, channels: true });
+  assert.deepEqual(zoomAxes(20, 300), { time: true, channels: true });
+  assert.deepEqual(zoomAxes(40, 40), { time: true, channels: true });
+  assert.deepEqual(zoomAxes(7, 7), { time: false, channels: false });
+});
+
+test('a zoom covers the stretch a box covers', () => {
+  assert.deepEqual(zoomSpan(12, 14.5, 60), { start: 12, length: 2.5 });
+});
+
+test('a zoom too short to read widens about its middle', () => {
+  const { start, length } = zoomSpan(20, 20.02, 60);
+  assert.equal(length, MIN_ZOOM);
+  assert.ok(Math.abs(start + length / 2 - 20.01) < 1e-9);
+});
+
+test('a widened zoom stays inside the recording', () => {
+  assert.deepEqual(zoomSpan(0, 0.01, 60), { start: 0, length: MIN_ZOOM });
+  assert.deepEqual(zoomSpan(59.99, 60, 60), { start: 60 - MIN_ZOOM, length: MIN_ZOOM });
+  assert.deepEqual(zoomSpan(0, 0.05, 0.1), { start: 0, length: 0.1 });
+});
+
 test('counts ticks in whole days past the longest step', () => {
   const step = tickStep(1e9, 1000, 40);
   assert.ok(step > 86400);
@@ -157,14 +200,16 @@ function viewOf(recording) {
   frame.append(canvas);
   window.document.body.append(frame, axis);
   const hits = [];
+  const zooms = [];
   const view = new TraceView(
     canvas,
     axis,
     (hit, announce) => hits.push({ hit, announce }),
     () => {},
+    (span, rows) => zooms.push({ span, rows }),
   );
   view.setRecording({ annotations: [], ...recording });
-  return { view, canvas, axis, hits };
+  return { view, canvas, axis, hits, zooms };
 }
 
 const called = (canvas, name) => canvas.getContext('2d').calls.filter((call) => call.name === name);
@@ -481,4 +526,232 @@ test('a new recording removes the cursor from the screen', () => {
   view.moveCursor(100, 0, false);
   view.setRecording({ annotations: [], ...oneChannel(new Float32Array(2560)) });
   assert.equal(canvas.nextElementSibling.hidden, true);
+});
+
+const fourRows = () => ({
+  channels: ['Fp1', 'Fp2', 'C3', 'C4'].map((label) => ({
+    label,
+    unit: 'uV',
+    fs: 256,
+    data: new Float32Array(256 * 60),
+  })),
+  duration: 60,
+});
+
+// Pointer events at a place on the plot, which starts after the row labels.
+function pointer(view, canvas, type, [x, y], init = {}) {
+  const event = new window.MouseEvent(type, { clientX: view.gutter + x, clientY: y, ...init });
+  const { pointerType, pointerId } = init;
+  Object.assign(event, { pointerType, pointerId, isPrimary: true });
+  canvas.dispatchEvent(event);
+}
+
+function drag(view, canvas, from, to, init) {
+  pointer(view, canvas, 'pointerdown', from, init);
+  pointer(view, canvas, 'pointermove', to, init);
+  pointer(view, canvas, 'pointerup', to, init);
+}
+
+const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual}`);
+const boxOf = (canvas) => canvas.nextElementSibling.nextElementSibling;
+
+test('a box drawn on the traces zooms to the time and the channels inside it', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(10, 10, 1);
+  const width = view.plotWidth();
+  // Rows are 150 pixels high, so this runs from the second row into the third.
+  drag(view, canvas, [width * 0.2, 160], [width * 0.5, 320]);
+  assert.equal(zooms.length, 1);
+  near(zooms[0].span.start, 12);
+  near(zooms[0].span.length, 3);
+  assert.deepEqual(zooms[0].rows, { first: 1, count: 2 });
+});
+
+test('a flat drag zooms time alone, a narrow one channels alone and a click nothing', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  drag(view, canvas, [100, 160], [400, 170]);
+  assert.equal(zooms[0].rows, null);
+  assert.ok(zooms[0].span.length > 0);
+
+  drag(view, canvas, [100, 10], [104, 310]);
+  assert.deepEqual(zooms[1], { span: null, rows: { first: 0, count: 3 } });
+
+  drag(view, canvas, [100, 10], [103, 12]);
+  assert.equal(zooms.length, 2);
+});
+
+test('a box over every row on screen leaves the rows as they are', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  drag(view, canvas, [100, 10], [400, 590]);
+  assert.equal(zooms[0].rows, null);
+  drag(view, canvas, [100, 10], [102, 590]);
+  assert.equal(zooms.length, 1);
+});
+
+test('a drag that runs off the plot stops at its edges', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(10, 10, 1);
+  drag(view, canvas, [view.plotWidth() / 2, 160], [-50, 5000]);
+  near(zooms[0].span.start, 10);
+  near(zooms[0].span.length, 5);
+  assert.deepEqual(zooms[0].rows, { first: 1, count: 3 });
+});
+
+test('the box shows what letting go will zoom to, in whole rows', () => {
+  const { view, canvas } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  const box = boxOf(canvas);
+  assert.equal(box.hidden, true);
+
+  pointer(view, canvas, 'pointerdown', [100, 160]);
+  pointer(view, canvas, 'pointermove', [102, 162]);
+  assert.equal(box.hidden, true);
+
+  pointer(view, canvas, 'pointermove', [400, 320]);
+  assert.equal(box.hidden, false);
+  assert.equal(box.style.left, `${view.gutter + 100}px`);
+  assert.equal(box.style.width, '300px');
+  assert.equal(box.style.top, '150px');
+  assert.equal(box.style.height, '300px');
+
+  // Flat, it spans every row.
+  pointer(view, canvas, 'pointermove', [400, 165]);
+  assert.equal(box.style.top, '0px');
+  assert.equal(box.style.height, '600px');
+
+  // Narrow, it spans the whole plot.
+  pointer(view, canvas, 'pointermove', [101, 460]);
+  assert.equal(box.style.left, `${view.gutter}px`);
+  assert.equal(box.style.width, `${view.plotWidth()}px`);
+
+  pointer(view, canvas, 'pointerup', [101, 460]);
+  assert.equal(box.hidden, true);
+});
+
+test('a finger or another button draws no box', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  drag(view, canvas, [100, 160], [400, 320], { pointerType: 'touch' });
+  drag(view, canvas, [100, 160], [400, 320], { button: 2 });
+  assert.deepEqual(zooms, []);
+  assert.equal(boxOf(canvas).hidden, true);
+});
+
+test('a drag the browser cancels, or Escape, zooms nothing', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  pointer(view, canvas, 'pointerdown', [100, 160]);
+  pointer(view, canvas, 'pointermove', [400, 320]);
+  pointer(view, canvas, 'pointercancel', [400, 320]);
+  pointer(view, canvas, 'pointerup', [400, 320]);
+  assert.equal(boxOf(canvas).hidden, true);
+
+  pointer(view, canvas, 'pointerdown', [100, 160]);
+  pointer(view, canvas, 'pointermove', [400, 320]);
+  const escape = () =>
+    canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+  assert.equal(escape(), false);
+  pointer(view, canvas, 'pointerup', [400, 320]);
+  assert.deepEqual(zooms, []);
+  assert.equal(boxOf(canvas).hidden, true);
+  // With no drag, Escape is left for the page to undo a zoom.
+  assert.equal(escape(), true);
+});
+
+test('a drag keeps hold of the pointer once it leaves the canvas', () => {
+  const { view, canvas } = viewOf(fourRows());
+  const held = [];
+  canvas.setPointerCapture = (id) => held.push(id);
+  pointer(view, canvas, 'pointerdown', [100, 160], { pointerId: 7 });
+  assert.deepEqual(held, [7]);
+});
+
+test('draws no box before there is a recording', () => {
+  const canvas = window.document.createElement('canvas');
+  window.document.createElement('div').append(canvas);
+  const view = new TraceView(canvas, window.document.createElement('canvas'));
+  canvas.dispatchEvent(new window.MouseEvent('pointerdown'));
+  assert.equal(view.drag, null);
+});
+
+test('the channels a zoom keeps share the height of the frame', () => {
+  const { view, canvas } = viewOf(fourRows());
+  view.setView(0, 10, 1, { first: 1, count: 2 });
+  assert.equal(view.rowHeight, 300);
+  assert.equal(canvas.style.height, '600px');
+  canvas.getContext('2d').calls.length = 0;
+  view.draw();
+  const labels = drawn(canvas).filter((text) => !text.startsWith('±') && text !== 'flat');
+  assert.deepEqual(labels, ['Fp2', 'C3']);
+});
+
+test('fewer rows draw taller traces', () => {
+  const recording = fourRows();
+  recording.channels[2].data = Float32Array.from({ length: 256 * 60 }, (_, i) => Math.sin(i / 5));
+  const { view } = viewOf(recording);
+  const scale = (rows) => {
+    view.setView(0, 10, 1, rows);
+    return view.pixelsPerUnit(2);
+  };
+  assert.equal(scale({ first: 2, count: 1 }), 4 * scale(null));
+});
+
+test('pointing in a zoom reads the channel under the pointer', () => {
+  const { view, canvas, hits } = viewOf(fourRows());
+  view.setView(0, 10, 1, { first: 2, count: 2 });
+  pointer(view, canvas, 'pointermove', [100, 50]);
+  assert.equal(hits.at(-1).hit.channel.label, 'C3');
+  pointer(view, canvas, 'pointermove', [100, 350]);
+  assert.equal(hits.at(-1).hit.channel.label, 'C4');
+  assert.equal(canvas.previousElementSibling.style.top, '300px');
+});
+
+test('the keyboard keeps to the channels a zoom keeps', () => {
+  const { view, canvas, hits } = viewOf(fourRows());
+  view.setView(0, 10, 1, { first: 1, count: 2 });
+  const key = (name) =>
+    canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: name, bubbles: true }));
+  key('ArrowUp');
+  assert.equal(hits.at(-1).hit.channel.label, 'Fp2');
+  key('ArrowDown');
+  key('ArrowDown');
+  assert.equal(hits.at(-1).hit.channel.label, 'C3');
+});
+
+test('a zoom keeps the cursor on a channel it keeps and clears it from one it drops', () => {
+  const { view, hits } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  view.moveCursor(10, 2, false);
+  view.setView(0, 10, 1, { first: 2, count: 2 });
+  assert.equal(hits.at(-1).hit.channel.label, 'C3');
+  view.setView(0, 10, 1, { first: 3, count: 1 });
+  assert.equal(hits.at(-1).hit, null);
+  assert.equal(view.cursor, null);
+});
+
+test('coming out of a zoom keeps the channels it showed in view', () => {
+  const channels = Array.from({ length: 40 }, (_, row) => ({
+    label: `C${row}`,
+    unit: 'uV',
+    fs: 256,
+    data: new Float32Array(2560),
+  }));
+  const { view, canvas } = viewOf({ channels, duration: 10 });
+  const frame = canvas.parentElement;
+  view.setView(0, 10, 1, { first: 30, count: 4 });
+  assert.equal(frame.scrollTop, 0);
+  view.setView(0, 10, 1);
+  assert.equal(frame.scrollTop, 30 * view.rowHeight);
+});
+
+test('a zoom drops a drag under way', () => {
+  const { view, canvas, zooms } = viewOf(fourRows());
+  view.setView(0, 10, 1);
+  pointer(view, canvas, 'pointerdown', [100, 160]);
+  pointer(view, canvas, 'pointermove', [400, 320]);
+  view.setView(0, 10, 1, { first: 1, count: 2 });
+  pointer(view, canvas, 'pointerup', [400, 320]);
+  assert.deepEqual(zooms, []);
 });
