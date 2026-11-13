@@ -126,6 +126,7 @@ test('offers windows up to the whole file and starts at ten seconds', () => {
 test('lists annotations and jumps to them', async () => {
   const buttons = [...$('annotation-list').querySelectorAll('button')];
   assert.equal($('annotations').hidden, false);
+  assert.equal($('annotations').open, true);
   assert.deepEqual(
     buttons.map(({ textContent }) => textContent),
     ['0:20 Eyes closed', '0:40 Eyes open'],
