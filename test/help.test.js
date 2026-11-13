@@ -33,3 +33,11 @@ test('runs nothing but the theme, which it shares with the viewer', () => {
 test('leads back to the viewer', () => {
   assert.equal(document.querySelector('.brand').getAttribute('href'), 'index.html');
 });
+
+test("has the section that the viewer's link help points to", () => {
+  const viewer = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const help = new JSDOM(viewer).window.document.querySelector('.link-head a');
+  assert.equal(help.getAttribute('href'), 'help.html#links');
+  assert.equal(help.target, '_blank');
+  assert.ok(document.getElementById('links'));
+});

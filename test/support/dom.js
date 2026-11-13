@@ -12,14 +12,15 @@ export function fakeContext() {
 }
 
 // Loads index.html into jsdom and adds what jsdom leaves out for a page like this one.
-export function installDom({ width = 1000, height = 600 } = {}) {
+export function installDom({ width = 1000, height = 600, url = 'http://localhost/' } = {}) {
   const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-  const { window } = new JSDOM(html);
+  const { window } = new JSDOM(html, { url });
   const { document } = window;
 
   Object.assign(globalThis, {
     window,
     document,
+    history: window.history,
     Option: window.Option,
     MutationObserver: window.MutationObserver,
     getComputedStyle: window.getComputedStyle.bind(window),

@@ -2,8 +2,9 @@ import { CsvError, parseCsv } from './csv.js';
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
-import { amount, count, decimalsFor, formatClock } from './format.js';
+import { amount, count, decimalsFor, downloadProgress, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
+import { download, LinkError, resolveLink } from './remote.js';
 import {
   clamp,
   eventColors,
@@ -20,6 +21,9 @@ const CHOOSE = 'Choose an EDF or CSV file';
 
 // EDF files turn up under many names, so only a name that says text picks the CSV reader.
 const TEXT_FILE = /\.(?:csv|tsv|txt)$/i;
+
+// A recording opened by link is named after this in the address, so the page can be shared.
+const LINK_MARK = '#url=';
 
 // A file that takes longer than this to read shows the dialog, so a drop gets a response.
 const PROGRESS_DELAY = 150;
@@ -44,6 +48,10 @@ const chooseLabel = $('choose-label');
 const demoButton = $('show-demo');
 const demoOffer = $('demo-offer');
 const fileInput = $('file-input');
+const linkForm = $('link-form');
+const linkInput = $('link-input');
+const linkButton = $('open-link');
+const linkStatus = $('link-status');
 const errorBox = $('error');
 const nameHeading = $('recording-name');
 const noteLine = $('recording-note');
@@ -78,6 +86,7 @@ let bandTimer = 0;
 let bandRun = 0;
 let progressTimer = 0;
 let openRequest = 0;
+let downloading = null;
 
 function showHover(hit, announce = false) {
   if (!hit) {
@@ -337,13 +346,41 @@ function stopReading() {
   clearTimeout(progressTimer);
   chooseButton.disabled = false;
   chooseLabel.textContent = CHOOSE;
+  linkButton.disabled = false;
+  linkStatus.hidden = true;
+}
+
+// Each new recording to open stops the download of the one before.
+function beginOpening() {
+  openRequest += 1;
+  downloading?.abort();
+  downloading = null;
+  setError('');
+  return openRequest;
+}
+
+function linkInAddress() {
+  const { hash } = new URL(document.URL);
+  if (!hash.startsWith(LINK_MARK)) return '';
+  const link = hash.slice(LINK_MARK.length);
+  if (!/^https?%3A/i.test(link)) return link;
+  try {
+    return decodeURIComponent(link);
+  } catch {
+    return link;
+  }
+}
+
+// The address names a recording opened by link, and nothing once something else is open.
+function setAddress(link) {
+  const url = new URL(document.URL);
+  url.hash = link ? `${LINK_MARK}${link}` : '';
+  history.replaceState(null, '', url.href);
 }
 
 // Reading can take a while, so whatever was opened last is what stays on screen.
 async function openFile(file) {
-  openRequest += 1;
-  const request = openRequest;
-  setError('');
+  const request = beginOpening();
   chooseButton.disabled = true;
   chooseLabel.textContent = 'Reading…';
   clearTimeout(progressTimer);
@@ -353,6 +390,7 @@ async function openFile(file) {
     if (request !== openRequest) return;
     const parse = TEXT_FILE.test(file.name) ? parseCsv : parseEdf;
     show(parse(buffer), file.name);
+    setAddress('');
     loader.close();
   } catch (error) {
     if (request !== openRequest) return;
@@ -367,6 +405,50 @@ async function openFile(file) {
   }
 }
 
+// A download takes longer than reading a file, so the dialog stays open to show its progress.
+async function openLink(text) {
+  let target;
+  try {
+    target = resolveLink(text);
+  } catch (error) {
+    openLoader();
+    setError(error.message);
+    return;
+  }
+  const request = beginOpening();
+  const controller = new AbortController();
+  downloading = controller;
+  linkInput.value = target.link;
+  linkButton.disabled = true;
+  linkStatus.textContent = 'Downloading…';
+  linkStatus.hidden = false;
+  openLoader();
+  try {
+    const buffer = await download(target, {
+      signal: controller.signal,
+      onProgress: (done, total) => {
+        linkStatus.textContent = `Downloading ${downloadProgress(done, total)}`;
+      },
+    });
+    if (request !== openRequest) return;
+    show(parseEdf(buffer), target.name);
+    setAddress(target.link);
+    loader.close();
+  } catch (error) {
+    if (request !== openRequest) return;
+    setError(
+      error instanceof LinkError || error instanceof EdfError
+        ? error.message
+        : `${target.name} could not be opened. It may be too large for this browser.`,
+    );
+  } finally {
+    if (request === openRequest) {
+      downloading = null;
+      stopReading();
+    }
+  }
+}
+
 openButton.addEventListener('click', () => {
   setError('');
   openLoader();
@@ -374,11 +456,19 @@ openButton.addEventListener('click', () => {
 closeButton.addEventListener('click', () => loader.close());
 chooseButton.addEventListener('click', () => fileInput.click());
 demoButton.addEventListener('click', () => {
-  openRequest += 1;
+  beginOpening();
   stopReading();
-  setError('');
   showDemo();
+  setAddress('');
   loader.close();
+});
+linkForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  openLink(linkInput.value);
+});
+window.addEventListener('hashchange', () => {
+  const link = linkInAddress();
+  if (link) openLink(link);
 });
 fileInput.addEventListener('change', () => {
   const [file] = fileInput.files;
@@ -462,6 +552,8 @@ window.addEventListener('drop', (event) => {
 });
 
 showDemo();
+const startingLink = linkInAddress();
+if (startingLink) openLink(startingLink);
 
 // A canvas keeps whatever font it was drawn with, so redraw once the real one arrives.
 document.fonts.ready.then(() => view.resize());

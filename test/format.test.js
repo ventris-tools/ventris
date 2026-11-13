@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { amount, count, decimalsFor, formatClock, rowRange, unitLabel } from '../js/format.js';
+import {
+  amount,
+  count,
+  decimalsFor,
+  downloadProgress,
+  formatClock,
+  rowRange,
+  unitLabel,
+} from '../js/format.js';
 
 test('writes a time as minutes or hours', () => {
   assert.equal(formatClock(0), '0:00');
@@ -47,4 +55,9 @@ test('counts with the right plural', () => {
 test('spells out microvolts only', () => {
   assert.equal(unitLabel('uV'), 'µV');
   assert.equal(unitLabel('uA'), 'uA');
+});
+
+test('writes download progress in megabytes, with the total when it is known', () => {
+  assert.equal(downloadProgress(3_250_000, 6_501_376), '3.3 of 6.5 MB');
+  assert.equal(downloadProgress(120_000, 0), '0.1 MB');
 });
