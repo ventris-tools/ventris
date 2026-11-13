@@ -1,3 +1,4 @@
+import { CsvError, parseCsv } from './csv.js';
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
@@ -15,6 +16,10 @@ import {
 const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
 const DEMO_NAME = 'Demo (synthetic data)';
+const CHOOSE = 'Choose an EDF or CSV file';
+
+// EDF files turn up under many names, so only a name that says text picks the CSV reader.
+const TEXT_FILE = /\.(?:csv|tsv|txt)$/i;
 
 // A file that takes longer than this to read shows the dialog, so a drop gets a response.
 const PROGRESS_DELAY = 150;
@@ -331,7 +336,7 @@ function openLoader() {
 function stopReading() {
   clearTimeout(progressTimer);
   chooseButton.disabled = false;
-  chooseLabel.textContent = 'Choose an EDF file';
+  chooseLabel.textContent = CHOOSE;
 }
 
 // Reading can take a while, so whatever was opened last is what stays on screen.
@@ -346,13 +351,14 @@ async function openFile(file) {
   try {
     const buffer = await file.arrayBuffer();
     if (request !== openRequest) return;
-    show(parseEdf(buffer), file.name);
+    const parse = TEXT_FILE.test(file.name) ? parseCsv : parseEdf;
+    show(parse(buffer), file.name);
     loader.close();
   } catch (error) {
     if (request !== openRequest) return;
     openLoader();
     setError(
-      error instanceof EdfError
+      error instanceof EdfError || error instanceof CsvError
         ? error.message
         : `${file.name} could not be opened. It may be too large for this browser.`,
     );
