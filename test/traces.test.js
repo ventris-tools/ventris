@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   baseline,
+  eventColors,
   levelAt,
   robustSpread,
   sidewaysPixels,
@@ -107,6 +108,44 @@ test('counts ticks in whole days past the longest step', () => {
   const step = tickStep(1e9, 1000, 40);
   assert.ok(step > 86400);
   assert.equal(step % 86400, 0);
+});
+
+const events = (...texts) => texts.map((text, time) => ({ time, duration: 0, text }));
+
+test('annotations with the same text share a colour, and different texts differ', () => {
+  const colors = eventColors(events('Blink', 'Eyes closed', 'Blink', 'Eyes open'));
+  assert.equal(colors[0], colors[2]);
+  assert.equal(new Set(colors).size, 3);
+});
+
+test('the commonest kinds take the first colours, and ties keep their order', () => {
+  const colors = eventColors(events('Note', 'Spike', 'Arousal', 'Spike', 'Spike', 'Arousal'));
+  assert.deepEqual(colors, [
+    '--event-3',
+    '--event-1',
+    '--event-2',
+    '--event-1',
+    '--event-1',
+    '--event-2',
+  ]);
+});
+
+test('reads a kind past its case and spacing', () => {
+  const colors = eventColors(events('Eyes closed', 'eyes closed ', 'EYES CLOSED'));
+  assert.equal(new Set(colors).size, 1);
+});
+
+test('kinds past the palette share the grey of secondary text', () => {
+  const texts = Array.from({ length: 6 }, (_, index) => `Kind ${index}`);
+  const colors = eventColors(events(...texts));
+  assert.deepEqual(colors, [
+    '--event-1',
+    '--event-2',
+    '--event-3',
+    '--event-4',
+    '--ink-2',
+    '--ink-2',
+  ]);
 });
 
 const window = installDom();
@@ -223,6 +262,47 @@ test('writes annotation names on the axis and marks them on the traces', () => {
   assert.ok(!drawn(axis).includes('Later'));
   assert.equal(called(canvas, 'fillRect').length, 1);
   assert.equal(axis.style.height, '44px');
+});
+
+// The colours each canvas was set to, in order.
+function paints(canvas, property) {
+  const values = [];
+  Object.defineProperty(canvas.getContext('2d'), property, {
+    set: (value) => {
+      values.push(value);
+    },
+    configurable: true,
+  });
+  return values;
+}
+
+test('marks and names each kind of annotation in its own colour', () => {
+  const root = window.document.documentElement;
+  const palette = { '--event-1': '#111111', '--event-2': '#222222', '--ink': '#000000' };
+  for (const [name, value] of Object.entries(palette)) root.style.setProperty(name, value);
+  const annotations = [
+    { time: 1, duration: 0, text: 'Blink' },
+    { time: 3, duration: 0, text: 'Eyes closed' },
+    { time: 5, duration: 0, text: 'Blink' },
+  ];
+  const { view, canvas, axis } = viewOf({ ...oneChannel(new Float32Array(2560)), annotations });
+  view.setView(0, 10, 1);
+  const lines = paints(canvas, 'strokeStyle');
+  const names = paints(axis, 'fillStyle');
+  view.draw();
+  for (const name of Object.keys(palette)) root.style.removeProperty(name);
+
+  // The grid and the traces read colours this test leaves unset, so they come back empty.
+  assert.deepEqual(lines.filter(Boolean), ['#111111', '#222222', '#111111']);
+  // Each name's mark in its colour, then the name itself in ink.
+  assert.deepEqual(names.slice(-6), [
+    '#111111',
+    '#000000',
+    '#222222',
+    '#000000',
+    '#111111',
+    '#000000',
+  ]);
 });
 
 test('leaves room for a time axis of the usual height without annotations', () => {

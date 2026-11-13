@@ -48,6 +48,18 @@ npm run format:check
 
 `index.html` preloads the modules so that the browser fetches them together. A new module has to be added there, and a test fails until it is.
 
+## Colour
+
+Ventris has to work for colour-blind people. About 1 man in 12 and 1 woman in 200 can't tell some reds from some greens, and every colour in the app is chosen with them in mind:
+
+- Nothing is said by colour alone. A colour always comes with a name, a number, a shape or a place that says the same thing. Annotations carry their names, and the band bars carry their shares.
+- Colours that tell things apart, like the annotation colours, stay apart for everyone. In each theme, every two of them differ by at least 8 in OKLab ΔE (×100) under simulated protanopia and deuteranopia, using Machado, Oliveira and Fernandes (2009) at full severity, and by at least 15 for full colour vision. Any two annotations can sit side by side, so every pair counts, not only neighbours.
+- Marks are at least 3:1 against the background they're drawn on, and text is at least 4.5:1, so they hold up when hue doesn't.
+
+`test/colors.test.js` checks this for both themes and fails when a colour breaks it. Colours live as custom properties at the top of `styles.css`, and a new one goes there too, set for both themes and added to the test if it tells things apart.
+
+This is why only four kinds of annotation get a colour: no fifth colour stays apart from those four and the grey in both themes. Further kinds are grey, and their names tell them apart.
+
 ## Where text goes
 
 The viewer keeps to labels and short captions, and `help.html` holds anything that takes a sentence. The exceptions are the privacy promise, the medical disclaimer and messages about the file that's open. Help opens in a new tab, so that reading it doesn't close the recording.

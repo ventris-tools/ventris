@@ -3,7 +3,14 @@ import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
 import { amount, count, decimalsFor, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
-import { clamp, GAIN_LIMITS, sidewaysPixels, TraceView, windowChoices } from './traces.js';
+import {
+  clamp,
+  eventColors,
+  GAIN_LIMITS,
+  sidewaysPixels,
+  TraceView,
+  windowChoices,
+} from './traces.js';
 
 const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
@@ -133,11 +140,13 @@ function showDetails(recording) {
     : BAND_PROBLEMS['no-eeg'];
 }
 
-function annotationButton({ time, text }) {
+function annotationButton({ time, text }, color) {
   const item = document.createElement('li');
   const button = document.createElement('button');
   const when = document.createElement('span');
   button.type = 'button';
+  // The same colour as its marker on the traces, so the list doubles as their key.
+  button.style.setProperty('--event', `var(${color})`);
   when.textContent = formatClock(time, Number.isInteger(time) ? 0 : 1);
   button.append(when, ` ${text}`);
   // A little of what came before stays in view.
@@ -150,7 +159,10 @@ function showAnnotations({ annotations }) {
   annotationSection.hidden = annotations.length === 0;
   // One at a time, because a recording can hold more of them than a call can take arguments.
   const items = document.createDocumentFragment();
-  for (const annotation of annotations) items.append(annotationButton(annotation));
+  const colors = eventColors(annotations);
+  annotations.forEach((annotation, index) => {
+    items.append(annotationButton(annotation, colors[index]));
+  });
   annotationList.replaceChildren(items);
 }
 
