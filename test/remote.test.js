@@ -66,9 +66,9 @@ test('turns away links that are not to one EDF recording', () => {
   rejects(`${OPENNEURO}datasets/${FILE}`, /dataset or a folder/);
   rejects(
     `https://github.com/nemarDatasets/on004362/blob/main/sub-001/eeg/sub-001_eeg.set`,
-    /EDF files, and this link is to a \.set file/,
+    /EDF files only, and this one is to a \.set file/,
   );
-  rejects(`${OPENNEURO}ds003194/sub-01/eeg`, /EDF files, and this link is to something else/);
+  rejects(`${OPENNEURO}ds003194/sub-01/eeg`, /EDF files only, and this one is to something else/);
 });
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');

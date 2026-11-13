@@ -101,8 +101,8 @@ export function resolveLink(text) {
   if (extension !== 'edf') {
     throw new LinkError(
       extension
-        ? `Ventris opens EDF files, and this link is to a .${extension} file.`
-        : 'Ventris opens EDF files, and this link is to something else.',
+        ? `Links open EDF files only, and this one is to a .${extension} file.`
+        : 'Links open EDF files only, and this one is to something else.',
     );
   }
 

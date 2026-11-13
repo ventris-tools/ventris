@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import test from 'node:test';
+import { buildCsv, lslCsv } from './support/csv.js';
 import { buildEdf } from './support/edf.js';
 import { installDom } from './support/dom.js';
 
@@ -126,9 +127,14 @@ test('offers windows up to the whole file and starts at ten seconds', () => {
 test('lists annotations and jumps to them', async () => {
   const buttons = [...$('annotation-list').querySelectorAll('button')];
   assert.equal($('annotations').hidden, false);
+  assert.equal($('annotations').open, true);
   assert.deepEqual(
     buttons.map(({ textContent }) => textContent),
     ['0:20 Eyes closed', '0:40 Eyes open'],
+  );
+  assert.deepEqual(
+    buttons.map(({ style }) => style.getPropertyValue('--event')),
+    ['var(--event-1)', 'var(--event-2)'],
   );
   buttons[1].click();
   assert.equal(Number($('position').value), 39);
@@ -237,6 +243,105 @@ test('stops the trace size at its limits', () => {
   assert.equal($('gain-up').disabled, false);
 });
 
+const pointer = (type, clientX, clientY) =>
+  $('traces').dispatchEvent(new window.MouseEvent(type, { clientX, clientY, bubbles: true }));
+
+// Rows of the demo are 75 pixels high, and the plot starts well before 300 pixels in.
+function dragBox([x0, y0], [x1, y1]) {
+  pointer('pointerdown', x0, y0);
+  pointer('pointermove', x1, y1);
+  pointer('pointerup', x1, y1);
+}
+
+function slideTo(seconds) {
+  $('position').value = String(seconds);
+  $('position').dispatchEvent(new window.Event('input', { bubbles: true }));
+}
+
+const shownLength = () => 60 - Number($('position').max);
+
+test('a box drawn on the traces zooms to its time and channels, and a double-click undoes it', () => {
+  slideTo(20);
+  dragBox([300, 80], [500, 230]);
+  const label = $('traces').getAttribute('aria-label');
+  assert.match(label, /^Traces for 3 of 8 channels, from 0:2\d\.\d to 0:2\d\.\d\./);
+  assert.match(label, /Escape undoes the zoom/);
+  assert.match($('position-text').textContent, /^0:2\d\.\d to 0:2\d\.\d$/);
+  assert.ok(shownLength() < 5);
+  assert.equal($('reset-zoom').hidden, false);
+  assert.equal($('window').value, 'zoomed');
+  assert.equal($('window').selectedOptions[0].text, 'Zoomed');
+
+  $('traces').dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+  assert.equal($('position-text').textContent, '0:20 to 0:30');
+  assert.match($('traces').getAttribute('aria-label'), /^Traces for 8 channels, from 0:20 to 0:30/);
+  assert.doesNotMatch($('traces').getAttribute('aria-label'), /Escape/);
+  assert.equal($('reset-zoom').hidden, true);
+  assert.equal($('window').value, '10');
+  assert.ok(![...$('window').options].some(({ value }) => value === 'zoomed'));
+});
+
+test('a zoom within a zoom still goes back to the window it began in', () => {
+  slideTo(20);
+  dragBox([300, 80], [700, 380]);
+  dragBox([350, 10], [500, 12]);
+  assert.match($('traces').getAttribute('aria-label'), /^Traces for 5 of 8 channels/);
+  $('reset-zoom').click();
+  assert.equal($('position-text').textContent, '0:20 to 0:30');
+});
+
+test('a zoom moved off its window comes back centred on what was on screen', () => {
+  slideTo(20);
+  dragBox([300, 100], [500, 100]);
+  for (let i = 0; i < 6; i += 1) press($('traces'), 'PageUp');
+  const start = Number($('position').value);
+  const middle = start + shownLength() / 2;
+  assert.ok(start > 30);
+  assert.equal(press($('traces'), 'Escape'), false);
+  assert.ok(Math.abs(Number($('position').value) + 5 - middle) < 1e-9);
+  assert.equal($('reset-zoom').hidden, true);
+  assert.equal(press($('traces'), 'Escape'), true);
+});
+
+test('Escape drops a drag under way before it undoes a zoom', () => {
+  slideTo(20);
+  dragBox([300, 100], [500, 100]);
+  const zoomed = $('position-text').textContent;
+  pointer('pointerdown', 300, 80);
+  pointer('pointermove', 500, 380);
+  press($('traces'), 'Escape');
+  pointer('pointerup', 500, 380);
+  assert.equal($('position-text').textContent, zoomed);
+  assert.equal($('reset-zoom').hidden, false);
+  press($('traces'), 'Escape');
+  assert.equal($('reset-zoom').hidden, true);
+});
+
+test('choosing a window ends a zoom', () => {
+  slideTo(20);
+  dragBox([300, 80], [500, 230]);
+  $('window').value = '30';
+  $('window').dispatchEvent(new window.Event('change'));
+  assert.equal(shownLength(), 30);
+  assert.equal($('reset-zoom').hidden, true);
+  assert.match($('traces').getAttribute('aria-label'), /^Traces for 8 channels/);
+  $('window').value = '10';
+  $('window').dispatchEvent(new window.Event('change'));
+});
+
+test('opening a recording ends a zoom', async () => {
+  dragBox([300, 80], [500, 230]);
+  await open('night.edf');
+  assert.equal($('reset-zoom').hidden, true);
+  assert.equal($('window').value, '10');
+  assert.match(
+    $('traces').getAttribute('aria-label'),
+    /^Traces for 1 channel, from 0:00 to 0:10\./,
+  );
+  $('open-recording').click();
+  $('show-demo').click();
+});
+
 test('opens an EDF file, resets the view and hides the empty annotation list', async () => {
   await open('night.edf');
   assert.equal($('recording-name').textContent, 'night.edf');
@@ -264,6 +369,55 @@ test('gives the real reason when bands cannot be measured', async () => {
   await wait(80);
   assert.equal($('band-note').textContent, 'This recording has no EEG channels to measure.');
   assert.equal($('time-note').textContent, 'This recording has no EEG channels to measure.');
+});
+
+test('opens a CSV file, with its markers as annotations', async () => {
+  await open('S001-001_eeg.csv', lslCsv());
+  assert.equal($('recording-name').textContent, 'S001-001_eeg.csv');
+  assert.equal($('recording-note').hidden, true);
+  assert.deepEqual(
+    [...$('annotation-list').querySelectorAll('button')].map(({ textContent }) => textContent),
+    ['0:01 trial_start', '0:04 move', '0:06 cue_stop'],
+  );
+  assert.match($('info-acquisition').textContent, /CSV/);
+  assert.match($('info-acquisition').textContent, /250 Hz/);
+  assert.match($('info-filters').textContent, /Unknown/);
+  assert.equal($('time-note').textContent, 'Whole file · 8 EEG channels');
+});
+
+test('opens tab-separated text by its name', async () => {
+  await open(
+    'session.tsv',
+    buildCsv(
+      ['time', 'Cz'],
+      [
+        [0, 1],
+        [0.004, 2],
+      ],
+      { delimiter: '\t' },
+    ),
+  );
+  assert.equal($('recording-name').textContent, 'session.tsv');
+});
+
+test('a CSV file it cannot read says why', async () => {
+  await open(
+    'table.csv',
+    buildCsv(
+      ['Cz', 'Pz'],
+      [
+        [1, 2],
+        [3, 4],
+      ],
+    ),
+  );
+  assert.equal($('loader').open, true);
+  assert.equal(
+    $('error').textContent,
+    'This CSV has no time column, so its sample rate is unknown.',
+  );
+  assert.equal($('recording-name').textContent, 'session.tsv');
+  $('close-loader').click();
 });
 
 test('a move drops the band measurement under way, so only the latest one shows', async (t) => {
@@ -351,7 +505,7 @@ test('a slow read opens the dialog so that a drop shows progress', async () => {
   slow.release();
   await wait(0);
   assert.equal($('loader').open, false);
-  assert.equal($('choose-label').textContent, 'Choose an EDF file');
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
 });
 
 test('marks a drag over the page and clears it on drop', async () => {

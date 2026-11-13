@@ -11,6 +11,9 @@ const rate = (value) => Math.round(value * 100) / 100;
 
 const hertz = (value) => `${rate(value)} Hz`;
 
+// A CSV says nothing about filtering, where an EDF header with none means none.
+const cutoff = (value) => (value === null ? UNKNOWN : hertz(value));
+
 // A row that only appears when the file has the value.
 const optional = (label, value, suffix = '') =>
   value === null ? [] : [[label, `${value}${suffix}`]];
@@ -48,6 +51,8 @@ export function infoGroups({ channels, duration, format, info, annotations }) {
       ['Sample rate', lowest === highest ? hertz(highest) : `${rate(lowest)} to ${hertz(highest)}`],
       ['Time points', Math.round(duration * highest).toLocaleString('en-US')],
       ['Format', format],
+      // The clock of a Lab Streaming Layer recording, which lines up files from one session.
+      ...optional('First timestamp', info.firstTime?.toFixed(3) ?? null, ' s'),
       ...optional('Annotations', annotations.length || null),
     ],
     channels: [
@@ -55,8 +60,8 @@ export function infoGroups({ channels, duration, format, info, annotations }) {
       ...optional(units.length > 1 ? 'Units' : 'Unit', units.join(', ') || null),
     ],
     filters: [
-      ['Highpass', hertz(info.highpass)],
-      ['Lowpass', hertz(info.lowpass)],
+      ['Highpass', cutoff(info.highpass)],
+      ['Lowpass', cutoff(info.lowpass)],
       ...optional('Notch', info.notch === null ? null : hertz(info.notch)),
     ],
   };

@@ -1,14 +1,26 @@
+import { CsvError, parseCsv } from './csv.js';
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
 import { EdfError, parseEdf } from './edf.js';
 import { amount, count, decimalsFor, downloadProgress, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
 import { download, LinkError, resolveLink } from './remote.js';
-import { clamp, GAIN_LIMITS, sidewaysPixels, TraceView, windowChoices } from './traces.js';
+import {
+  clamp,
+  eventColors,
+  GAIN_LIMITS,
+  sidewaysPixels,
+  TraceView,
+  windowChoices,
+} from './traces.js';
 
 const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
 const DEMO_NAME = 'Demo (synthetic data)';
+const CHOOSE = 'Choose an EDF or CSV file';
+
+// EDF files turn up under many names, so only a name that says text picks the CSV reader.
+const TEXT_FILE = /\.(?:csv|tsv|txt)$/i;
 
 // A recording opened by link is named after this in the address, so the page can be shared.
 const LINK_MARK = '#url=';
@@ -48,6 +60,7 @@ const tracePanel = canvas.closest('.trace-panel');
 const position = $('position');
 const positionText = $('position-text');
 const windowSelect = $('window');
+const resetButton = $('reset-zoom');
 const gainDown = $('gain-down');
 const gainUp = $('gain-up');
 const readout = $('readout');
@@ -57,7 +70,18 @@ const bandNote = $('band-note');
 const annotationSection = $('annotations');
 const annotationList = $('annotation-list');
 
-const state = { recording: null, start: 0, length: PREFERRED_WINDOW, gain: 1 };
+// The window is the length chosen in the list, and length is how much is on screen, which a
+// zoom shortens. Rows are the channels a zoom keeps, or null for all of them. A zoom keeps
+// where its window started, to go back to.
+const state = {
+  recording: null,
+  start: 0,
+  length: PREFERRED_WINDOW,
+  window: PREFERRED_WINDOW,
+  rows: null,
+  zoom: null,
+  gain: 1,
+};
 let bandTimer = 0;
 let bandRun = 0;
 let progressTimer = 0;
@@ -90,7 +114,22 @@ function moveTo(time) {
 // Sideways scrolling moves through time, one pixel of trace per pixel scrolled.
 const scrollTime = (pixels) => moveTo(state.start + view.secondsFor(pixels));
 
-const view = new TraceView(canvas, $('axis'), showHover, scrollTime);
+// A box drawn on the traces zooms to the time and the channels inside it.
+function zoomTo(span, rows) {
+  state.zoom ??= { home: state.start };
+  if (span) {
+    state.start = span.start;
+    state.length = span.length;
+  }
+  if (rows) state.rows = rows;
+  fitSlider();
+}
+
+const view = new TraceView(canvas, $('axis'), showHover, scrollTime, zoomTo);
+
+// The list shows this while zoomed. It can't be chosen, so choosing any window ends the zoom.
+const zoomOption = new Option('Zoomed', 'zoomed');
+zoomOption.disabled = true;
 
 const bandRows = BANDS.map(({ name, low, high }) => {
   const row = document.createElement('tr');
@@ -142,11 +181,13 @@ function showDetails(recording) {
     : BAND_PROBLEMS['no-eeg'];
 }
 
-function annotationButton({ time, text }) {
+function annotationButton({ time, text }, color) {
   const item = document.createElement('li');
   const button = document.createElement('button');
   const when = document.createElement('span');
   button.type = 'button';
+  // The same colour as its marker on the traces, so the list doubles as their key.
+  button.style.setProperty('--event', `var(${color})`);
   when.textContent = formatClock(time, Number.isInteger(time) ? 0 : 1);
   button.append(when, ` ${text}`);
   // A little of what came before stays in view.
@@ -159,7 +200,10 @@ function showAnnotations({ annotations }) {
   annotationSection.hidden = annotations.length === 0;
   // One at a time, because a recording can hold more of them than a call can take arguments.
   const items = document.createDocumentFragment();
-  for (const annotation of annotations) items.append(annotationButton(annotation));
+  const colors = eventColors(annotations);
+  annotations.forEach((annotation, index) => {
+    items.append(annotationButton(annotation, colors[index]));
+  });
   annotationList.replaceChildren(items);
 }
 
@@ -194,31 +238,62 @@ async function updateBands() {
   showBands(step.value);
 }
 
+function showZoom() {
+  const zoomed = state.zoom !== null;
+  resetButton.hidden = !zoomed;
+  if (zoomed) windowSelect.add(zoomOption);
+  else zoomOption.remove();
+  windowSelect.value = zoomed ? zoomOption.value : String(state.window);
+}
+
 function refresh() {
-  const { recording, start, length, gain } = state;
+  const { recording, start, length, gain, rows, zoom } = state;
   const end = Math.min(recording.duration, start + length);
-  const text = `${formatClock(start)} to ${formatClock(end)}`;
+  // A short zoom needs tenths of a second to say where it is.
+  const decimals = zoom && length < 60 ? 1 : 0;
+  const text = `${formatClock(start, decimals)} to ${formatClock(end, decimals)}`;
+  const total = count(recording.channels.length, 'channel');
+  const shown = rows ? `${rows.count} of ${total}` : total;
+  const undo = zoom ? ' Escape undoes the zoom.' : '';
   positionText.textContent = text;
   position.setAttribute('aria-valuetext', text);
   canvas.setAttribute(
     'aria-label',
-    `Traces for ${count(recording.channels.length, 'channel')}, from ${text}. Arrow keys read values, and Page Up and Page Down move a window at a time. Band shares are in the table.`,
+    `Traces for ${shown}, from ${text}. Arrow keys read values, and Page Up and Page Down move a window at a time.${undo} Band shares are in the table.`,
   );
-  view.setView(start, length, gain);
+  showZoom();
+  view.setView(start, length, gain, rows);
   clearTimeout(bandTimer);
   bandRun += 1;
   bandTimer = setTimeout(updateBands, 60);
 }
 
-function setWindow(seconds) {
-  const { recording } = state;
-  state.length = Math.min(seconds, recording.duration);
+// Fits the slider to how much is on screen, and the view to the recording.
+function fitSlider() {
   const latest = latestStart();
-  state.start = Math.min(state.start, latest);
+  state.start = clamp(state.start, 0, latest);
   position.max = String(latest);
   position.disabled = latest === 0;
   position.value = String(state.start);
   refresh();
+}
+
+// Shows a window of the chosen length with every channel, which ends any zoom. Coming out of
+// a zoom, that's the window the zoom began in, unless the view has since moved off it, when
+// the window centres on what was on screen.
+function setWindow(seconds) {
+  const { recording, start, length, zoom } = state;
+  state.window = Math.min(seconds, recording.duration);
+  if (zoom) {
+    const inside = start >= zoom.home && start + length <= zoom.home + state.window;
+    state.start = inside ? zoom.home : start + (length - state.window) / 2;
+  }
+  Object.assign(state, { length: state.window, rows: null, zoom: null });
+  fitSlider();
+}
+
+function resetZoom() {
+  if (state.zoom) setWindow(state.window);
 }
 
 function updateGainButtons() {
@@ -233,10 +308,8 @@ function formatWindow(seconds, duration) {
 }
 
 function show(recording, name, start = 0) {
-  state.recording = recording;
+  Object.assign(state, { recording, start, gain: 1, rows: null, zoom: null });
   viewer.hidden = false;
-  state.start = start;
-  state.gain = 1;
   demoOffer.hidden = recording.format === 'Synthetic';
   updateGainButtons();
   nameHeading.textContent = name;
@@ -252,7 +325,6 @@ function show(recording, name, start = 0) {
     ),
   );
   const preferred = choices.findLast((seconds) => seconds <= PREFERRED_WINDOW) ?? choices[0];
-  windowSelect.value = String(preferred);
   view.setRecording(recording);
   setWindow(preferred);
 }
@@ -273,7 +345,7 @@ function openLoader() {
 function stopReading() {
   clearTimeout(progressTimer);
   chooseButton.disabled = false;
-  chooseLabel.textContent = 'Choose an EDF file';
+  chooseLabel.textContent = CHOOSE;
   linkButton.disabled = false;
   linkStatus.hidden = true;
 }
@@ -316,14 +388,15 @@ async function openFile(file) {
   try {
     const buffer = await file.arrayBuffer();
     if (request !== openRequest) return;
-    show(parseEdf(buffer), file.name);
+    const parse = TEXT_FILE.test(file.name) ? parseCsv : parseEdf;
+    show(parse(buffer), file.name);
     setAddress('');
     loader.close();
   } catch (error) {
     if (request !== openRequest) return;
     openLoader();
     setError(
-      error instanceof EdfError
+      error instanceof EdfError || error instanceof CsvError
         ? error.message
         : `${file.name} could not be opened. It may be too large for this browser.`,
     );
@@ -408,12 +481,20 @@ position.addEventListener('input', () => {
   refresh();
 });
 windowSelect.addEventListener('change', () => setWindow(Number(windowSelect.value)));
+resetButton.addEventListener('click', resetZoom);
+canvas.addEventListener('dblclick', resetZoom);
 
 // Page keys follow the slider convention, where Page Up means later. The canvas keeps the
-// arrow keys for its cursor, so on the slider alone they step a tenth of a window.
+// arrow keys for its cursor, so on the slider alone they step a tenth of a window. Escape
+// undoes a zoom, once the canvas has let go of any drag under way.
 tracePanel.addEventListener('keydown', (event) => {
   const { recording, start, length } = state;
-  if (!recording) return;
+  if (!recording || event.defaultPrevented) return;
+  if (event.key === 'Escape' && state.zoom) {
+    event.preventDefault();
+    resetZoom();
+    return;
+  }
   const nudge = length / 10;
   const slider = event.target === position;
   const targets = {

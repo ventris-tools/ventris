@@ -14,6 +14,8 @@
   font-display: swap;
 }
 
+/* Every colour here has to work for colour-blind people, in both themes. Colour in
+   CONTRIBUTING.md has the rules, and test/colors.test.js fails when a colour breaks them. */
 :root {
   color-scheme: light;
   --paper: #f7f3ea;
@@ -27,6 +29,12 @@
   --accent: #2b6cb8;
   --on-accent: #ffffff;
   --error: #9b2c1c;
+  /* Annotation colours, one per kind, the same in both themes. Okabe-Ito hues, stepped so that
+     every two of them and --ink-2, which marks any further kinds, stay apart. */
+  --event-1: #0090df;
+  --event-2: #c25500;
+  --event-3: #008d66;
+  --event-4: #df50a8;
   --font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --text-xs: 0.72rem;
   --text-sm: 0.8rem;
@@ -101,12 +109,15 @@ button, select, input { font: inherit; }
   background: var(--surface);
 }
 
+/* Not selectable, so that dragging a box doesn't select the text around the traces. */
 .trace-frame {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-x: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 canvas { display: block; }
@@ -114,11 +125,16 @@ canvas { display: block; }
 /* Positioned so that the cursor's marks stack by document order: shading behind, line in front. */
 .traces { position: relative; touch-action: pan-y; cursor: crosshair; }
 
-.cursor-row, .cursor-line { position: absolute; top: 0; pointer-events: none; }
+.cursor-row, .cursor-line, .zoom-box { position: absolute; top: 0; pointer-events: none; }
 
 .cursor-row { background: var(--grid); }
 
 .cursor-line { width: 1px; background: var(--accent); }
+
+.zoom-box {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 
 /* The frame clips anything outside it, so the ring sits inside the canvas. */
 .traces:focus-visible { outline-offset: -2px; }
@@ -347,7 +363,12 @@ select {
 
 .button:disabled { color: var(--ink-2); cursor: not-allowed; opacity: 0.6; }
 
-.open-recording { min-height: 34px; padding: 0 8px; font-size: var(--text-sm); white-space: nowrap; }
+.open-recording, .reset-zoom {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
 
 .stepper { display: flex; gap: 6px; }
 .stepper .button { flex: 1; min-height: 34px; padding: 0; font-size: var(--text-lg); }
@@ -392,12 +413,23 @@ th span {
 
 .section-note { margin-top: 8px; font-size: var(--text-xs); }
 
-.annotations { margin: 0; padding: 0; list-style: none; }
+/* The list is the key to the annotation colours, so it starts open. A long one scrolls on its
+   own, so the sections below stay in reach, with room for the focus outline at its edges. */
+.annotations {
+  max-height: 280px;
+  margin: -4px;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
 
+/* The colour mark hangs at the start, so a long name wraps under its own text. */
 .annotations button {
   width: 100%;
   min-height: 28px;
-  padding: 2px 0;
+  padding: 2px 0 2px 11px;
+  text-indent: -11px;
   border: 0;
   background: none;
   color: var(--ink);
@@ -406,6 +438,17 @@ th span {
   overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
+}
+
+.annotations button::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 0.9em;
+  margin-right: 8px;
+  vertical-align: -0.1em;
+  border-radius: 1px;
+  background: var(--event);
 }
 
 .annotations button:hover { color: var(--accent); }

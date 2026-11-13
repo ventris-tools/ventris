@@ -32,7 +32,7 @@
     <p>Opening a public recording by link is the one time Ventris uses the network. It downloads that file and nothing else. Amazon and GitHub see your IP address and which file you asked for, as they would if you downloaded it yourself.</p>
 
     <h2 id="open">Open a recording</h2>
-    <p>Select Open a recording and choose an EDF or EDF+ file, or drop a file anywhere on the page.</p>
+    <p>Select Open a recording and choose an EDF, EDF+ or CSV file, or drop a file anywhere on the page.</p>
     <p>The whole file is read into your browser's memory, so a very large recording may not open.</p>
 
     <h2 id="links">Open a public recording by link</h2>
@@ -45,9 +45,22 @@
       <tbody>
         <tr><th scope="row">Datasets starting <code>on</code></th><td>NEMAR mirrors these from OpenNeuro, and they open.</td></tr>
         <tr><th scope="row">Datasets starting <code>nm</code></th><td>NEMAR's own datasets don't open yet. Their files are public, but their storage doesn't let a web page download them.</td></tr>
-        <tr><th scope="row">File types</th><td>EDF only, as for files on your computer. Link to one recording, a file ending in <code>.edf</code>, not to a dataset or a folder.</td></tr>
+        <tr><th scope="row">File types</th><td>EDF only. Link to one recording, a file ending in <code>.edf</code>, not to a dataset or a folder.</td></tr>
       </tbody>
     </table>
+
+    <h2 id="csv">CSV files</h2>
+    <p>A CSV file needs a header row that names its columns, then one row per sample. Lab Streaming Layer recordings are often saved this way, and so is MNE-Python's <code>to_data_frame()</code>. Files split by tabs or semicolons work too.</p>
+    <table>
+      <tbody>
+        <tr><th scope="row">Time</th><td>A column named <code>time</code> or <code>timestamp</code>, in seconds, or in milliseconds when the name ends in <code>ms</code>. A file without one can't be opened.</td></tr>
+        <tr><th scope="row">Channels</th><td>Every other column of numbers. A unit at the end of a name, as in <code>Fz [uV]</code>, becomes the channel's unit. Without one, values show as they are in the file.</td></tr>
+        <tr><th scope="row">Events</th><td>A column that is empty in most rows, such as a marker stream. Each value in it becomes an annotation.</td></tr>
+        <tr><th scope="row">Left out</th><td>Row numbers, and columns of words such as formatted dates.</td></tr>
+      </tbody>
+    </table>
+    <p>The sample rate comes from the usual step between times. A rate within 0.5% of one that devices use, such as 250.25 Hz for 250 Hz, counts as that rate. If the times jump anywhere, a note says the recording has gaps.</p>
+    <p>A CSV says nothing about filters or the participant, so those show as Unknown. Info gives the first timestamp, which lines up files from one session.</p>
 
     <h2 id="demo">The demo</h2>
     <p>Ventris opens on a demo. It's generated data for trying out Ventris, not a real recording.</p>
@@ -68,6 +81,12 @@
       </tbody>
     </table>
 
+    <h2 id="zoom">Zoom in</h2>
+    <p>Drag a box across the traces with the mouse to zoom to that stretch of time and those channels. The channels you keep share the height of the view, so their traces grow.</p>
+    <p>A flat drag zooms time alone, and a tall, narrow drag zooms channels alone. Drag down the channel names to pick channels.</p>
+    <p>While you're zoomed, the slider, swipes and keys move through time as usual, and the Window list says Zoomed.</p>
+    <p>Double-click the traces, press <kbd>Escape</kbd> or select Reset zoom to see the whole window and every channel again. If you haven't moved, you're back where you started.</p>
+
     <h2 id="keyboard">Keyboard</h2>
     <p>Select the traces or the slider first.</p>
     <table>
@@ -76,6 +95,7 @@
         <tr><th scope="row"><kbd>Home</kbd> <kbd>End</kbd></th><td>Go to the start or the end.</td></tr>
         <tr><th scope="row">Arrow keys on the traces</th><td>Move the cursor to read values: left and right through time, up and down between channels.</td></tr>
         <tr><th scope="row">Arrow keys on the slider</th><td>Move a tenth of a window.</td></tr>
+        <tr><th scope="row"><kbd>Escape</kbd></th><td>Undo a zoom.</td></tr>
       </tbody>
     </table>
 
@@ -85,7 +105,8 @@
     <p>Only EEG channels sampled at 64 Hz or faster are measured. If bands can't be measured, the line says why.</p>
 
     <h2 id="annotations">Annotations</h2>
-    <p>Annotations in an EDF+ file appear on the time axis. Select one in the list to jump to it.</p>
+    <p>Annotations in an EDF+ file, and events in a CSV file, appear on the time axis. Select one in the list to jump to it.</p>
+    <p>The four commonest kinds of annotation each get a colour, on the traces and in the list. The colours stay apart for colour-blind readers too. Any further kinds are grey, and every annotation keeps its name.</p>
 
     <h2 id="time-domain">Time domain</h2>
     <p>These figures cover the whole recording, pooled across the EEG channels. The line under them says how many. EEG channels in a different unit from the first one are left out.</p>
@@ -98,7 +119,7 @@
     </table>
 
     <h2 id="info">Info</h2>
-    <p>These details come from the file's header. They follow MNE-Python's EDF reader, so they usually match <code>mne.io.read_raw_edf</code>.</p>
+    <p>These details come from the file's header. For an EDF file they follow MNE-Python's EDF reader, so they usually match <code>mne.io.read_raw_edf</code>.</p>
     <p>EOG, EMG and ECG channels are read from their labels and stay out of the EEG measures.</p>
 
     <h2 id="theme">Light and dark</h2>

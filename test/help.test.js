@@ -15,6 +15,12 @@ test('holds the explanations that the viewer leaves out', () => {
   assert.match(text, /compare shapes rather than heights/);
 });
 
+test('explains how to zoom and how to undo it', () => {
+  assert.match(text, /Drag a box across the traces/);
+  assert.match(text, /Double-click the traces/);
+  assert.ok(document.getElementById('zoom'));
+});
+
 test('names the band range the viewer measures', () => {
   assert.ok(text.includes(`${BAND_RANGE} power`));
 });
