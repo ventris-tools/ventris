@@ -237,6 +237,105 @@ test('stops the trace size at its limits', () => {
   assert.equal($('gain-up').disabled, false);
 });
 
+const pointer = (type, clientX, clientY) =>
+  $('traces').dispatchEvent(new window.MouseEvent(type, { clientX, clientY, bubbles: true }));
+
+// Rows of the demo are 75 pixels high, and the plot starts well before 300 pixels in.
+function dragBox([x0, y0], [x1, y1]) {
+  pointer('pointerdown', x0, y0);
+  pointer('pointermove', x1, y1);
+  pointer('pointerup', x1, y1);
+}
+
+function slideTo(seconds) {
+  $('position').value = String(seconds);
+  $('position').dispatchEvent(new window.Event('input', { bubbles: true }));
+}
+
+const shownLength = () => 60 - Number($('position').max);
+
+test('a box drawn on the traces zooms to its time and channels, and a double-click undoes it', () => {
+  slideTo(20);
+  dragBox([300, 80], [500, 230]);
+  const label = $('traces').getAttribute('aria-label');
+  assert.match(label, /^Traces for 3 of 8 channels, from 0:2\d\.\d to 0:2\d\.\d\./);
+  assert.match(label, /Escape undoes the zoom/);
+  assert.match($('position-text').textContent, /^0:2\d\.\d to 0:2\d\.\d$/);
+  assert.ok(shownLength() < 5);
+  assert.equal($('reset-zoom').hidden, false);
+  assert.equal($('window').value, 'zoomed');
+  assert.equal($('window').selectedOptions[0].text, 'Zoomed');
+
+  $('traces').dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+  assert.equal($('position-text').textContent, '0:20 to 0:30');
+  assert.match($('traces').getAttribute('aria-label'), /^Traces for 8 channels, from 0:20 to 0:30/);
+  assert.doesNotMatch($('traces').getAttribute('aria-label'), /Escape/);
+  assert.equal($('reset-zoom').hidden, true);
+  assert.equal($('window').value, '10');
+  assert.ok(![...$('window').options].some(({ value }) => value === 'zoomed'));
+});
+
+test('a zoom within a zoom still goes back to the window it began in', () => {
+  slideTo(20);
+  dragBox([300, 80], [700, 380]);
+  dragBox([350, 10], [500, 12]);
+  assert.match($('traces').getAttribute('aria-label'), /^Traces for 5 of 8 channels/);
+  $('reset-zoom').click();
+  assert.equal($('position-text').textContent, '0:20 to 0:30');
+});
+
+test('a zoom moved off its window comes back centred on what was on screen', () => {
+  slideTo(20);
+  dragBox([300, 100], [500, 100]);
+  for (let i = 0; i < 6; i += 1) press($('traces'), 'PageUp');
+  const start = Number($('position').value);
+  const middle = start + shownLength() / 2;
+  assert.ok(start > 30);
+  assert.equal(press($('traces'), 'Escape'), false);
+  assert.ok(Math.abs(Number($('position').value) + 5 - middle) < 1e-9);
+  assert.equal($('reset-zoom').hidden, true);
+  assert.equal(press($('traces'), 'Escape'), true);
+});
+
+test('Escape drops a drag under way before it undoes a zoom', () => {
+  slideTo(20);
+  dragBox([300, 100], [500, 100]);
+  const zoomed = $('position-text').textContent;
+  pointer('pointerdown', 300, 80);
+  pointer('pointermove', 500, 380);
+  press($('traces'), 'Escape');
+  pointer('pointerup', 500, 380);
+  assert.equal($('position-text').textContent, zoomed);
+  assert.equal($('reset-zoom').hidden, false);
+  press($('traces'), 'Escape');
+  assert.equal($('reset-zoom').hidden, true);
+});
+
+test('choosing a window ends a zoom', () => {
+  slideTo(20);
+  dragBox([300, 80], [500, 230]);
+  $('window').value = '30';
+  $('window').dispatchEvent(new window.Event('change'));
+  assert.equal(shownLength(), 30);
+  assert.equal($('reset-zoom').hidden, true);
+  assert.match($('traces').getAttribute('aria-label'), /^Traces for 8 channels/);
+  $('window').value = '10';
+  $('window').dispatchEvent(new window.Event('change'));
+});
+
+test('opening a recording ends a zoom', async () => {
+  dragBox([300, 80], [500, 230]);
+  await open('night.edf');
+  assert.equal($('reset-zoom').hidden, true);
+  assert.equal($('window').value, '10');
+  assert.match(
+    $('traces').getAttribute('aria-label'),
+    /^Traces for 1 channel, from 0:00 to 0:10\./,
+  );
+  $('open-recording').click();
+  $('show-demo').click();
+});
+
 test('opens an EDF file, resets the view and hides the empty annotation list', async () => {
   await open('night.edf');
   assert.equal($('recording-name').textContent, 'night.edf');

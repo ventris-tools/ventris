@@ -30,7 +30,7 @@ Most EEG work starts with a simple question: what's in this file, and is it any 
 
 | View | What you get |
 |---|---|
-| Traces | Choose a window of 5 seconds or longer, and move through the recording with the slider, a swipe or the keyboard. Point at a trace to read the recorded value at that moment. |
+| Traces | Choose a window of 5 seconds or longer, and move through the recording with the slider, a swipe or the keyboard. Drag a box to zoom to a stretch of time and a few channels, and double-click to zoom back out. Point at a trace to read the recorded value at that moment. |
 | Frequency bands | The share of 1 to 30 Hz power in delta, theta, alpha and beta for the window on screen, from Welch spectra averaged across the EEG channels. It updates as you move. |
 | Annotations | EDF+ annotations appear on the time axis. Select one in the list to jump to it. |
 | Time domain | Mean, range and standard deviation across the whole recording, the channels with the lowest and highest SD, and a count of flat channels. |
