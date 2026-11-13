@@ -126,9 +126,14 @@ test('offers windows up to the whole file and starts at ten seconds', () => {
 test('lists annotations and jumps to them', async () => {
   const buttons = [...$('annotation-list').querySelectorAll('button')];
   assert.equal($('annotations').hidden, false);
+  assert.equal($('annotations').open, true);
   assert.deepEqual(
     buttons.map(({ textContent }) => textContent),
     ['0:20 Eyes closed', '0:40 Eyes open'],
+  );
+  assert.deepEqual(
+    buttons.map(({ style }) => style.getPropertyValue('--event')),
+    ['var(--event-1)', 'var(--event-2)'],
   );
   buttons[1].click();
   assert.equal(Number($('position').value), 39);

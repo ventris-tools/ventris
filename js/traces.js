@@ -33,6 +33,11 @@ const WINDOW_CHOICES = [5, 10, 30, 60, 300, 1800, 3600, 7200];
 // longest windows.
 const MAX_WINDOW_SAMPLES = 2e7;
 
+// How many kinds of annotation get a colour of their own, from the palette in styles.css.
+// Any two kinds can sit side by side, and no more colours than this stay apart for
+// colour-blind readers in both themes. CONTRIBUTING.md has the rule.
+const EVENT_COLORS = 4;
+
 // The shortest stretch of time a zoom shows, in seconds. A spike still spans a good part of it.
 export const MIN_ZOOM = 0.2;
 
@@ -105,6 +110,22 @@ export function windowChoices({ channels, duration }) {
   return fits(duration) || choices.length === 0 ? [...choices, duration] : choices;
 }
 
+// The colour of each annotation, as the name of a CSS property. Annotations with the same
+// text share a colour, and the commonest kinds take the colours. Any further kinds share the
+// grey of secondary text, and their names tell them apart.
+export function eventColors(annotations) {
+  const keys = annotations.map(({ text }) => text.trim().toLowerCase());
+  const counts = new Map();
+  for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
+  // A stable sort, so kinds as common as each other keep the order they first appear in.
+  const colors = new Map(
+    [...counts.keys()]
+      .sort((a, b) => counts.get(b) - counts.get(a))
+      .map((key, rank) => [key, rank < EVENT_COLORS ? `--event-${rank + 1}` : '--ink-2']),
+  );
+  return keys.map((key) => colors.get(key));
+}
+
 // The smallest tick step that leaves room for a label between ticks.
 export function tickStep(length, plotWidth, labelWidth) {
   const seconds = ((labelWidth + TICK_GAP) / plotWidth) * length;
@@ -158,6 +179,7 @@ export class TraceView {
     this.onScroll = onScroll;
     this.onZoom = onZoom;
     this.recording = null;
+    this.events = [];
     this.spreads = [];
     this.baselines = [];
     this.start = 0;
@@ -220,6 +242,8 @@ export class TraceView {
 
   setRecording(recording) {
     this.recording = recording;
+    const colors = eventColors(recording.annotations);
+    this.events = recording.annotations.map((event, index) => ({ ...event, color: colors[index] }));
     this.spreads = recording.channels.map((channel) => robustSpread(channel.data));
     this.baselines = recording.channels.map(({ data, fs }) => baseline(data, fs));
     this.firstRow = 0;
@@ -262,7 +286,7 @@ export class TraceView {
   }
 
   eventRow() {
-    return this.recording.annotations.length > 0 ? EVENT_ROW : 0;
+    return this.events.length > 0 ? EVENT_ROW : 0;
   }
 
   fit(canvas, context, height) {
@@ -528,16 +552,16 @@ export class TraceView {
 
   visibleEvents() {
     const end = this.start + this.length;
-    return this.recording.annotations.filter(
-      ({ time, duration }) => time <= end && time + duration >= this.start,
-    );
+    return this.events.filter(({ time, duration }) => time <= end && time + duration >= this.start);
   }
 
   draw() {
     const { context, recording, gutter } = this;
     if (!recording) return;
     const styles = getComputedStyle(document.documentElement);
-    const color = (name) => styles.getPropertyValue(name).trim();
+    // Kept for the frame, since a window can hold thousands of annotations in a few colours.
+    const colors = {};
+    const color = (name) => (colors[name] ??= styles.getPropertyValue(name).trim());
     const plotHeight = this.plotHeight();
     const plotWidth = this.plotWidth();
     const ticks = this.ticks();
@@ -561,7 +585,7 @@ export class TraceView {
     context.beginPath();
     context.rect(gutter, 0, plotWidth, plotHeight);
     context.clip();
-    this.drawEvents(events, plotHeight, color('--accent'));
+    this.drawEvents(events, plotHeight, color);
     context.strokeStyle = color('--trace');
     context.lineWidth = 1;
     context.lineJoin = 'round';
@@ -583,14 +607,14 @@ export class TraceView {
     this.drawAxis(ticks, events, color);
   }
 
-  // A marker at each annotation, with a shaded span when it lasts a while.
-  drawEvents(events, plotHeight, accent) {
+  // A marker at each annotation in its colour, with a shaded span when it lasts a while.
+  drawEvents(events, plotHeight, color) {
     const { context } = this;
-    context.strokeStyle = accent;
-    context.fillStyle = accent;
     context.lineWidth = 1;
     context.setLineDash([4, 3]);
-    for (const { time, duration } of events) {
+    for (const { time, duration, color: name } of events) {
+      context.strokeStyle = color(name);
+      context.fillStyle = color(name);
       const x = Math.round(this.xOf(time)) + 0.5;
       if (duration > 0) {
         context.globalAlpha = 0.12;
@@ -618,14 +642,18 @@ export class TraceView {
       context.fillText(label, clamp(x, half + 4, width - half - 4), eventRow + TICK_ROW / 2 + 1);
     }
 
-    // Annotation names sit here so that they stay in view too.
+    // Annotation names sit here so that they stay in view too. Each follows a mark in its
+    // colour under the marker's line, and is written in ink, which reads on any colour.
     const right = gutter + this.plotWidth();
     context.textAlign = 'left';
-    context.fillStyle = color('--accent');
-    events.forEach(({ time, text }, index) => {
+    events.forEach(({ time, text, color: name }, index) => {
       const x = Math.max(gutter, this.xOf(time));
       const next = index + 1 < events.length ? this.xOf(events[index + 1].time) : right;
-      context.fillText(fitText(context, text, Math.min(next, right) - x - 8), x + 3, EVENT_ROW / 2);
+      context.fillStyle = color(name);
+      context.fillRect(Math.round(x) - 1, 0, 3, EVENT_ROW - 3);
+      context.fillStyle = color('--ink');
+      const room = Math.min(next, right) - x - 12;
+      context.fillText(fitText(context, text, room), x + 6, EVENT_ROW / 2);
     });
   }
 
