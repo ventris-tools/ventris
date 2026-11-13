@@ -101,12 +101,15 @@ button, select, input { font: inherit; }
   background: var(--surface);
 }
 
+/* Not selectable, so that dragging a box doesn't select the text around the traces. */
 .trace-frame {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-x: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 canvas { display: block; }
@@ -114,11 +117,16 @@ canvas { display: block; }
 /* Positioned so that the cursor's marks stack by document order: shading behind, line in front. */
 .traces { position: relative; touch-action: pan-y; cursor: crosshair; }
 
-.cursor-row, .cursor-line { position: absolute; top: 0; pointer-events: none; }
+.cursor-row, .cursor-line, .zoom-box { position: absolute; top: 0; pointer-events: none; }
 
 .cursor-row { background: var(--grid); }
 
 .cursor-line { width: 1px; background: var(--accent); }
+
+.zoom-box {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 
 /* The frame clips anything outside it, so the ring sits inside the canvas. */
 .traces:focus-visible { outline-offset: -2px; }
@@ -347,7 +355,12 @@ select {
 
 .button:disabled { color: var(--ink-2); cursor: not-allowed; opacity: 0.6; }
 
-.open-recording { min-height: 34px; padding: 0 8px; font-size: var(--text-sm); white-space: nowrap; }
+.open-recording, .reset-zoom {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
 
 .stepper { display: flex; gap: 6px; }
 .stepper .button { flex: 1; min-height: 34px; padding: 0; font-size: var(--text-lg); }
