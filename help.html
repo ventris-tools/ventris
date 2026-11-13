@@ -29,10 +29,25 @@
 
     <h2 id="privacy">Your recordings stay with you</h2>
     <p>Everything runs in your browser, so your recordings never leave your computer. Nothing is uploaded.</p>
+    <p>Opening a public recording by link is the one time Ventris uses the network. It downloads that file and nothing else. Amazon and GitHub see your IP address and which file you asked for, as they would if you downloaded it yourself.</p>
 
     <h2 id="open">Open a recording</h2>
     <p>Select Open a recording and choose an EDF or EDF+ file, or drop a file anywhere on the page.</p>
     <p>The whole file is read into your browser's memory, so a very large recording may not open.</p>
+
+    <h2 id="links">Open a public recording by link</h2>
+    <p>Ventris can open a recording from a <a href="https://nemar.org">NEMAR</a> dataset straight from GitHub. Find the file in a repository of the <a href="https://github.com/nemarDatasets">nemarDatasets</a> organization, copy its address, and paste it under Open a recording. The address looks like this:</p>
+    <p><code>https://github.com/nemarDatasets/on003194/blob/main/sub-NEPO01/ses-Nepopre/eeg/sub-NEPO01_ses-Nepopre_task-taskprenepo_eeg.edf</code></p>
+    <p>A link to the same file in OpenNeuro's public bucket, starting <code>https://s3.amazonaws.com/openneuro.org/</code>, works too.</p>
+    <p>GitHub keeps only a small pointer for each recording, so Ventris downloads the file from OpenNeuro's copy and checks it against the size and hash in the pointer. What you see is the version the link names.</p>
+    <p>Once it opens, the address bar links to the recording, so you can share the view or come back to it.</p>
+    <table>
+      <tbody>
+        <tr><th scope="row">Datasets starting <code>on</code></th><td>NEMAR mirrors these from OpenNeuro, and they open.</td></tr>
+        <tr><th scope="row">Datasets starting <code>nm</code></th><td>NEMAR's own datasets don't open yet. Their files are public, but their storage doesn't let a web page download them.</td></tr>
+        <tr><th scope="row">File types</th><td>EDF only, as for files on your computer. Link to one recording, a file ending in <code>.edf</code>, not to a dataset or a folder.</td></tr>
+      </tbody>
+    </table>
 
     <h2 id="demo">The demo</h2>
     <p>Ventris opens on a demo. It's generated data for trying out Ventris, not a real recording.</p>

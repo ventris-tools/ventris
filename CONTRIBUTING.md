@@ -41,6 +41,7 @@ npm run format:check
 | `js/dsp.js` | Computes power spectra, band shares and time statistics |
 | `js/format.js` | Writes times and amounts for the interface |
 | `js/info.js` | Builds the rows of the details panel |
+| `js/remote.js` | Reads a link to a public recording on NEMAR or OpenNeuro, and downloads it |
 | `js/demo.js` | Generates the synthetic demo recording |
 | `js/traces.js` | Draws the traces and the time axis, and handles the cursor |
 | `js/theme.js` | Sets the light or dark theme and remembers the choice in the browser |
@@ -103,7 +104,7 @@ Fonts and other assets keep their own licenses. Put the license file next to the
 
 The README promises that a recording never leaves the computer. Two checks protect that promise:
 
-- ESLint rejects network calls and navigation in `js/`.
-- `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help.html` changes.
+- ESLint rejects network calls and navigation in `js/`. The one exception is `fetch` in `js/remote.js`, which downloads a public recording opened by link and sends nothing of its own.
+- `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help.html` changes. The policy in `index.html` lets `fetch` reach only the two places named in `js/remote.js`: OpenNeuro's public bucket and NEMAR's datasets on GitHub, each limited to its own folder.
 
 These catch mistakes, not deliberate workarounds, so review changes to them with care. If a change really needs one of them relaxed, update the README's promise in the same pull request.

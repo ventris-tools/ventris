@@ -37,6 +37,12 @@ export function amount(value, unit, decimals = 1) {
   return `${signed} ${unitLabel(unit)}`.trim();
 }
 
+// How much of a download has arrived, in megabytes, and the total when it's known.
+export function downloadProgress(done, total) {
+  const megabytes = (bytes) => (bytes / 1e6).toFixed(1);
+  return total > 0 ? `${megabytes(done)} of ${megabytes(total)} MB` : `${megabytes(done)} MB`;
+}
+
 // One formatter for every row of every frame, as making one is what takes the time.
 const rangeNumber = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 2 });
 

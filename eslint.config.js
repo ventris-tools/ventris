@@ -17,19 +17,24 @@ const WAYS_OUT = [
 const message =
   'Ventris never sends a recording anywhere. See "Keeping recordings private" in CONTRIBUTING.md.';
 
+const blockWaysOut = (ways) => [
+  'error',
+  { selector: `Identifier[name=/^(${ways.join('|')})$/]`, message },
+  { selector: "CallExpression[callee.name='open']", message },
+  { selector: "MemberExpression[object.name='window'][property.name='open']", message },
+];
+
 export default [
   js.configs.recommended,
   {
     files: ['js/**/*.js'],
     languageOptions: { globals: globals.browser },
-    rules: {
-      'no-restricted-syntax': [
-        'error',
-        { selector: `Identifier[name=/^(${WAYS_OUT.join('|')})$/]`, message },
-        { selector: "CallExpression[callee.name='open']", message },
-        { selector: "MemberExpression[object.name='window'][property.name='open']", message },
-      ],
-    },
+    rules: { 'no-restricted-syntax': blockWaysOut(WAYS_OUT) },
+  },
+  // Downloads a public recording opened by link, and is the one module that may use fetch.
+  {
+    files: ['js/remote.js'],
+    rules: { 'no-restricted-syntax': blockWaysOut(WAYS_OUT.filter((way) => way !== 'fetch')) },
   },
   {
     files: ['test/**/*.js', '*.config.js'],

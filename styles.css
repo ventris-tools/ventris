@@ -468,6 +468,36 @@ noscript .error { margin: 16px; }
 
 .dropzone span { color: var(--ink-2); font-size: var(--text-md); }
 
+.link-form { margin-top: 16px; }
+
+.link-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 12px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.link-head a { color: var(--accent); }
+
+.link-row { display: flex; gap: 8px; margin-top: 6px; }
+
+.link-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.link-status { margin-top: 6px; }
+
 .loader-note { margin-top: 12px; font-size: var(--text-md); }
 
 .loader-demo {
@@ -534,6 +564,7 @@ kbd {
   .panel { border-inline: 0; }
   select, .open-recording, .stepper .button { min-height: 44px; }
   .close { width: 44px; min-height: 44px; }
+  .link-row input, .link-row .button { min-height: 44px; }
   .annotations button { min-height: 44px; }
   .panel-info { border-top: 1px solid var(--line); }
   .section > summary { min-height: 44px; }

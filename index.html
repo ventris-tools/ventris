@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- This policy backs the privacy promise. It stops fetch, XHR and WebSockets, and loads from other hosts. It cannot stop navigation or WebRTC, so the promise also rests on the app having no code that sends a recording. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <!-- This policy backs the privacy promise. It stops loads from other hosts, and lets fetch reach only OpenNeuro's public bucket and NEMAR's datasets on GitHub, to download a public recording opened by link. It cannot stop navigation or WebRTC, so the promise also rests on the app having no code that sends a recording. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src https://s3.amazonaws.com/openneuro.org/ https://raw.githubusercontent.com/nemarDatasets/; base-uri 'none'; form-action 'none'">
   <meta name="color-scheme" content="light dark">
   <title>Ventris · EEG viewer in your browser</title>
   <meta name="description" content="Open an EEG recording and explore its signals and frequency bands. Everything runs in your browser, so your recordings never leave your computer.">
@@ -20,6 +20,7 @@
   <link rel="modulepreload" href="js/edf.js">
   <link rel="modulepreload" href="js/format.js">
   <link rel="modulepreload" href="js/info.js">
+  <link rel="modulepreload" href="js/remote.js">
   <link rel="modulepreload" href="js/traces.js">
   <link rel="stylesheet" href="styles.css">
   <script src="js/theme.js"></script>
@@ -151,6 +152,17 @@
       <span>or drop it here</span>
     </button>
     <input id="file-input" type="file" accept=".edf" hidden>
+    <form class="link-form" id="link-form">
+      <div class="link-head">
+        <label for="link-input">Or open a public recording by link</label>
+        <a href="help.html#links" target="_blank" rel="noopener noreferrer">Which links?</a>
+      </div>
+      <div class="link-row">
+        <input id="link-input" type="url" placeholder="https://github.com/nemarDatasets/…" required autocomplete="off" spellcheck="false">
+        <button class="button" id="open-link" type="submit">Open</button>
+      </div>
+      <p class="note link-status" id="link-status" hidden></p>
+    </form>
     <p class="error" id="error" role="alert" hidden></p>
     <p class="note loader-note">Your recordings never leave your computer.</p>
     <div class="loader-demo" id="demo-offer">

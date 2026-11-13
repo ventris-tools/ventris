@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-include=\"js/**\" --test-coverage-lines=99 --test-coverage-branches=95 --test-coverage-functions=98 \"test/*.test.js\"",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include=\"js/**\" --test-coverage-lines=99 --test-coverage-branches=96 --test-coverage-functions=98 \"test/*.test.js\"",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

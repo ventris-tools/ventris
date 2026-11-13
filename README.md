@@ -4,7 +4,7 @@
 
 No install, no account and no upload. Your signals, frequency bands, annotations and header details, all on one screen.
 
-**[Open Ventris](https://ventris-tools.github.io/ventris/)** and drop in an EDF file, or try the built-in demo.
+**[Open Ventris](https://ventris-tools.github.io/ventris/)** and drop in an EDF file, paste a link to a public recording on NEMAR or OpenNeuro, or try the built-in demo.
 
 [![Ventris showing eight EEG channels, with frequency band shares and recording details beside the traces](docs/screenshot.png)](https://ventris-tools.github.io/ventris/)
 
@@ -23,6 +23,7 @@ Most EEG work starts with a simple question: what's in this file, and is it any 
 
 - **Checking a recording right after a session.** Spot flat channels, noisy channels and artifacts while you can still do something about them.
 - **Opening a file you didn't record.** See the sample rate, channels, filter settings and duration of a shared or public dataset before you write any code.
+- **Browsing public datasets.** Open a recording from a NEMAR dataset by its GitHub link, with nothing to download or clone first.
 - **Finding your events.** Jump between the annotations in an EDF+ file and check that they line up with the signal.
 - **Teaching.** The demo shows a blink and eyes-closed alpha, with no data to find and nothing for students to install.
 
@@ -36,15 +37,35 @@ Most EEG work starts with a simple question: what's in this file, and is it any 
 | Time domain | Mean, range and standard deviation across the whole recording, the channels with the lowest and highest SD, and a count of flat channels. |
 | Recording details | Start time, participant, device, sample rates, channel names and filter settings from the header. EOG, EMG and ECG channels are read from their labels and stay out of the EEG measures. |
 
+## Open a public recording by link
+
+Ventris can open a recording from a [NEMAR](https://nemar.org) dataset straight from its page on GitHub. Find the file in a repository of the [nemarDatasets](https://github.com/nemarDatasets) organization, copy the address from your browser, and paste it into Ventris under **Open a recording**. For example:
+
+```text
+https://github.com/nemarDatasets/on003194/blob/main/sub-NEPO01/ses-Nepopre/eeg/sub-NEPO01_ses-Nepopre_task-taskprenepo_eeg.edf
+```
+
+The address bar then links to that recording, so you can share the view or come back to it. A link to the same file in OpenNeuro's public bucket on Amazon S3, starting `https://s3.amazonaws.com/openneuro.org/`, works too.
+
+GitHub keeps only a small pointer for each recording, so Ventris downloads the file itself from OpenNeuro's copy on S3. It checks the download against the size and SHA-256 hash in the pointer, so what you see is the version the link names.
+
+What works today:
+
+- **Datasets NEMAR mirrors from OpenNeuro**, whose names start with `on`. Over a hundred of them hold EDF files.
+- **Not yet NEMAR's own datasets**, whose names start with `nm`. Their files are public, but their storage doesn't let a web page download them.
+- **EDF files only**, as for files on your computer.
+
 ## Your recordings stay on your computer
 
 EEG recordings are sensitive, so you shouldn't have to upload one just to look at it.
 
-Everything in Ventris runs in your browser. The app has no code that sends a recording anywhere. The page's Content Security Policy backs this up by blocking `fetch`, XHR, WebSockets and loads from other hosts. It cannot stop navigation or WebRTC, so the promise rests on the code as well. You can watch your browser's network panel while a file opens, and read the code yourself.
+Everything in Ventris runs in your browser. The app has no code that sends a recording anywhere. The page's Content Security Policy backs this up by blocking XHR, WebSockets and loads from other hosts, and by letting `fetch` reach only OpenNeuro's public bucket on S3 and NEMAR's datasets on GitHub. It cannot stop navigation or WebRTC, so the promise rests on the code as well. You can watch your browser's network panel while a file opens, and read the code yourself.
+
+Opening a public recording by link is the one time Ventris uses the network. It downloads that file and nothing else, without cookies or a referrer. Amazon and GitHub see your IP address and which file you asked for, as they would if you downloaded it yourself.
 
 ## Run it locally
 
-The hosted page is all most people need. You can also run your own copy, which needs no internet connection once it's downloaded. There's no build step and there are no runtime dependencies.
+The hosted page is all most people need. You can also run your own copy, which needs no internet connection once it's downloaded, except to open a recording by link. There's no build step and there are no runtime dependencies.
 
 ```bash
 git clone https://github.com/ventris-tools/ventris.git
