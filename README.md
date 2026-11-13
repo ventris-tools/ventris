@@ -4,7 +4,7 @@
 
 No install, no account and no upload. Your signals, frequency bands, annotations and header details, all on one screen.
 
-**[Open Ventris](https://ventris-tools.github.io/ventris/)** and drop in an EDF file, or try the built-in demo.
+**[Open Ventris](https://ventris-tools.github.io/ventris/)** and drop in an EDF or CSV file, or try the built-in demo.
 
 [![Ventris showing eight EEG channels, with frequency band shares and recording details beside the traces](docs/screenshot.png)](https://ventris-tools.github.io/ventris/)
 
@@ -22,7 +22,7 @@ Most EEG work starts with a simple question: what's in this file, and is it any 
 ## What it's good for
 
 - **Checking a recording right after a session.** Spot flat channels, noisy channels and artifacts while you can still do something about them.
-- **Opening a file you didn't record.** See the sample rate, channels, filter settings and duration of a shared or public dataset before you write any code.
+- **Opening a file you didn't record.** See the sample rate, channels, filter settings and duration of a shared or public dataset before you write any code. That includes datasets shared as CSV, such as Lab Streaming Layer recordings.
 - **Finding your events.** Jump between the annotations in an EDF+ file and check that they line up with the signal.
 - **Teaching.** The demo shows a blink and eyes-closed alpha, with no data to find and nothing for students to install.
 
@@ -32,7 +32,7 @@ Most EEG work starts with a simple question: what's in this file, and is it any 
 |---|---|
 | Traces | Choose a window of 5 seconds or longer, and move through the recording with the slider, a swipe or the keyboard. Drag a box to zoom to a stretch of time and a few channels, and double-click to zoom back out. Point at a trace to read the recorded value at that moment. |
 | Frequency bands | The share of 1 to 30 Hz power in delta, theta, alpha and beta for the window on screen, from Welch spectra averaged across the EEG channels. It updates as you move. |
-| Annotations | EDF+ annotations appear on the time axis, each kind in its own colour. Select one in the list to jump to it. |
+| Annotations | EDF+ annotations and the marker column of a CSV file appear on the time axis, each kind in its own colour. Select one in the list to jump to it. |
 | Time domain | Mean, range and standard deviation across the whole recording, the channels with the lowest and highest SD, and a count of flat channels. |
 | Recording details | Start time, participant, device, sample rates, channel names and filter settings from the header. EOG, EMG and ECG channels are read from their labels and stay out of the EEG measures. |
 
@@ -62,9 +62,10 @@ Then open <http://localhost:4173>.
 
 ## Where it stands
 
-Ventris is an early preview, and today it's a viewer for EDF and EDF+ files:
+Ventris is an early preview, and today it's a viewer for EDF, EDF+ and CSV files:
 
 - BDF files aren't supported yet.
+- A CSV file needs a header row and a column of times. Help lists what it reads.
 - It doesn't filter, re-reference or export signals.
 - The whole file is read into your browser's memory, so a very large recording may not open.
 

@@ -15,6 +15,7 @@
   <link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/JetBrainsMono-Medium.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="modulepreload" href="js/channels.js">
+  <link rel="modulepreload" href="js/csv.js">
   <link rel="modulepreload" href="js/demo.js">
   <link rel="modulepreload" href="js/dsp.js">
   <link rel="modulepreload" href="js/edf.js">
@@ -149,10 +150,10 @@
       <button class="button close" id="close-loader" type="button" aria-label="Close">×</button>
     </div>
     <button class="dropzone" id="choose-file" type="button" autofocus>
-      <strong id="choose-label">Choose an EDF file</strong>
+      <strong id="choose-label">Choose an EDF or CSV file</strong>
       <span>or drop it here</span>
     </button>
-    <input id="file-input" type="file" accept=".edf" hidden>
+    <input id="file-input" type="file" accept=".edf,.csv,.tsv,.txt" hidden>
     <p class="error" id="error" role="alert" hidden></p>
     <p class="note loader-note">Your recordings never leave your computer.</p>
     <div class="loader-demo" id="demo-offer">

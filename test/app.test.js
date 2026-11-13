@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import test from 'node:test';
+import { buildCsv, lslCsv } from './support/csv.js';
 import { buildEdf } from './support/edf.js';
 import { installDom } from './support/dom.js';
 
@@ -370,6 +371,55 @@ test('gives the real reason when bands cannot be measured', async () => {
   assert.equal($('time-note').textContent, 'This recording has no EEG channels to measure.');
 });
 
+test('opens a CSV file, with its markers as annotations', async () => {
+  await open('S001-001_eeg.csv', lslCsv());
+  assert.equal($('recording-name').textContent, 'S001-001_eeg.csv');
+  assert.equal($('recording-note').hidden, true);
+  assert.deepEqual(
+    [...$('annotation-list').querySelectorAll('button')].map(({ textContent }) => textContent),
+    ['0:01 trial_start', '0:04 move', '0:06 cue_stop'],
+  );
+  assert.match($('info-acquisition').textContent, /CSV/);
+  assert.match($('info-acquisition').textContent, /250 Hz/);
+  assert.match($('info-filters').textContent, /Unknown/);
+  assert.equal($('time-note').textContent, 'Whole file · 8 EEG channels');
+});
+
+test('opens tab-separated text by its name', async () => {
+  await open(
+    'session.tsv',
+    buildCsv(
+      ['time', 'Cz'],
+      [
+        [0, 1],
+        [0.004, 2],
+      ],
+      { delimiter: '\t' },
+    ),
+  );
+  assert.equal($('recording-name').textContent, 'session.tsv');
+});
+
+test('a CSV file it cannot read says why', async () => {
+  await open(
+    'table.csv',
+    buildCsv(
+      ['Cz', 'Pz'],
+      [
+        [1, 2],
+        [3, 4],
+      ],
+    ),
+  );
+  assert.equal($('loader').open, true);
+  assert.equal(
+    $('error').textContent,
+    'This CSV has no time column, so its sample rate is unknown.',
+  );
+  assert.equal($('recording-name').textContent, 'session.tsv');
+  $('close-loader').click();
+});
+
 test('a move drops the band measurement under way, so only the latest one shows', async (t) => {
   await open('pair.edf', buildEdf([signal(), { ...signal(), label: 'Pz' }], { records: 30 }));
   await wait(80);
@@ -455,7 +505,7 @@ test('a slow read opens the dialog so that a drop shows progress', async () => {
   slow.release();
   await wait(0);
   assert.equal($('loader').open, false);
-  assert.equal($('choose-label').textContent, 'Choose an EDF file');
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
 });
 
 test('marks a drag over the page and clears it on drop', async () => {

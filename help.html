@@ -31,8 +31,21 @@
     <p>Everything runs in your browser, so your recordings never leave your computer. Nothing is uploaded.</p>
 
     <h2 id="open">Open a recording</h2>
-    <p>Select Open a recording and choose an EDF or EDF+ file, or drop a file anywhere on the page.</p>
+    <p>Select Open a recording and choose an EDF, EDF+ or CSV file, or drop a file anywhere on the page.</p>
     <p>The whole file is read into your browser's memory, so a very large recording may not open.</p>
+
+    <h2 id="csv">CSV files</h2>
+    <p>A CSV file needs a header row that names its columns, then one row per sample. Lab Streaming Layer recordings are often saved this way, and so is MNE-Python's <code>to_data_frame()</code>. Files split by tabs or semicolons work too.</p>
+    <table>
+      <tbody>
+        <tr><th scope="row">Time</th><td>A column named <code>time</code> or <code>timestamp</code>, in seconds, or in milliseconds when the name ends in <code>ms</code>. A file without one can't be opened.</td></tr>
+        <tr><th scope="row">Channels</th><td>Every other column of numbers. A unit at the end of a name, as in <code>Fz [uV]</code>, becomes the channel's unit. Without one, values show as they are in the file.</td></tr>
+        <tr><th scope="row">Events</th><td>A column that is empty in most rows, such as a marker stream. Each value in it becomes an annotation.</td></tr>
+        <tr><th scope="row">Left out</th><td>Row numbers, and columns of words such as formatted dates.</td></tr>
+      </tbody>
+    </table>
+    <p>The sample rate comes from the usual step between times. A rate within 0.5% of one that devices use, such as 250.25 Hz for 250 Hz, counts as that rate. If the times jump anywhere, a note says the recording has gaps.</p>
+    <p>A CSV says nothing about filters or the participant, so those show as Unknown. Info gives the first timestamp, which lines up files from one session.</p>
 
     <h2 id="demo">The demo</h2>
     <p>Ventris opens on a demo. It's generated data for trying out Ventris, not a real recording.</p>
@@ -77,7 +90,7 @@
     <p>Only EEG channels sampled at 64 Hz or faster are measured. If bands can't be measured, the line says why.</p>
 
     <h2 id="annotations">Annotations</h2>
-    <p>Annotations in an EDF+ file appear on the time axis. Select one in the list to jump to it.</p>
+    <p>Annotations in an EDF+ file, and events in a CSV file, appear on the time axis. Select one in the list to jump to it.</p>
     <p>The four commonest kinds of annotation each get a colour, on the traces and in the list. The colours stay apart for colour-blind readers too. Any further kinds are grey, and every annotation keeps its name.</p>
 
     <h2 id="time-domain">Time domain</h2>
@@ -91,7 +104,7 @@
     </table>
 
     <h2 id="info">Info</h2>
-    <p>These details come from the file's header. They follow MNE-Python's EDF reader, so they usually match <code>mne.io.read_raw_edf</code>.</p>
+    <p>These details come from the file's header. For an EDF file they follow MNE-Python's EDF reader, so they usually match <code>mne.io.read_raw_edf</code>.</p>
     <p>EOG, EMG and ECG channels are read from their labels and stay out of the EEG measures.</p>
 
     <h2 id="theme">Light and dark</h2>

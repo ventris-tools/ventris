@@ -49,6 +49,17 @@ test('shows the rows MNE always shows and hides what the file lacks', () => {
   ]);
 });
 
+test('shows filters as unknown, and the first timestamp, for a CSV', () => {
+  const { acquisition, filters } = infoGroups(
+    recording({ highpass: null, lowpass: null, firstTime: 53704.78020002602 }),
+  );
+  assert.equal(lookup(acquisition)['First timestamp'], '53704.780 s');
+  assert.deepEqual(filters, [
+    ['Highpass', 'Unknown'],
+    ['Lowpass', 'Unknown'],
+  ]);
+});
+
 test('adds participant, device and notch rows when the file has them', () => {
   const { general, filters } = infoGroups(
     recording({
