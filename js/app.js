@@ -424,14 +424,16 @@ async function openLink(text) {
   linkStatus.hidden = false;
   openLoader();
   try {
-    const buffer = await download(target, {
+    const { buffer, warnings } = await download(target, {
       signal: controller.signal,
       onProgress: (done, total) => {
         linkStatus.textContent = `Downloading ${downloadProgress(done, total)}`;
       },
     });
     if (request !== openRequest) return;
-    show(parseEdf(buffer), target.name);
+    const recording = parseEdf(buffer);
+    recording.warnings.push(...warnings);
+    show(recording, target.name);
     setAddress(target.link);
     loader.close();
   } catch (error) {

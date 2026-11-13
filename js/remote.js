@@ -16,6 +16,14 @@ const ANNEX_KEY = /(?:^|\/)([A-Z0-9]+)-s(\d+)(?:-[A-Za-z]\d+)*--([0-9a-f]+)[^/]*
 // Anything this long is the file itself rather than a pointer to it.
 const POINTER_LIMIT = 1024;
 
+// How long to wait for GitHub's pointer, in milliseconds. A pointer is a few hundred bytes, so
+// this is ample, and a network that can't reach GitHub shouldn't hold up a file from OpenNeuro.
+export const POINTER_WAIT = 4000;
+
+// Shown with a recording from a GitHub link when GitHub didn't answer.
+export const UNCHECKED =
+  "GitHub didn't answer, so this copy from OpenNeuro wasn't checked against the version the link names.";
+
 export class LinkError extends Error {}
 
 const segmentsOf = (url) => url.pathname.split('/').filter(Boolean);
@@ -130,11 +138,20 @@ async function get(url, signal) {
 }
 
 // A pointer names the file's size and, for the SHA-256 backends, its hash. A file small enough
-// to live in git itself comes back whole.
-async function readPointer(url, signal) {
-  const response = await get(url, signal);
+// to live in git itself comes back whole. If GitHub doesn't answer in time, or answers with a
+// server error, there's nothing to check against, but OpenNeuro may still have the file.
+async function readPointer(url, signal, wait) {
+  const waiting = AbortSignal.any([AbortSignal.timeout(wait), ...(signal ? [signal] : [])]);
+  let response;
+  let bytes;
+  try {
+    response = await get(url, waiting);
+    bytes = response && new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return { unreachable: true };
+  }
   if (!response) throw new LinkError("This file isn't in that version of the dataset.");
-  const bytes = new Uint8Array(await response.arrayBuffer());
   const key =
     bytes.length < POINTER_LIMIT && ANNEX_KEY.exec(new TextDecoder().decode(bytes).trim());
   if (!key) return { whole: bytes };
@@ -168,23 +185,31 @@ async function sha256(bytes) {
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// Downloads a recording that resolveLink has read. onProgress hears the bytes received so far
-// and the total, which is 0 when the total isn't known.
-export async function download(target, { signal, onProgress = () => {} } = {}) {
-  const pointer = target.pointerUrl ? await readPointer(target.pointerUrl, signal) : null;
-  if (pointer?.whole) return pointer.whole.buffer;
+// Downloads a recording that resolveLink has read, as { buffer, warnings }. The warnings are
+// for the viewer to show with the recording. onProgress hears the bytes received so far and the
+// total, which is 0 when the total isn't known.
+export async function download(
+  target,
+  { signal, onProgress = () => {}, pointerWait = POINTER_WAIT } = {},
+) {
+  const pointer = target.pointerUrl
+    ? await readPointer(target.pointerUrl, signal, pointerWait)
+    : null;
+  if (pointer?.whole) return { buffer: pointer.whole.buffer, warnings: [] };
+  const expected = pointer?.unreachable ? null : pointer;
 
   const response = await get(target.dataUrl, signal);
   if (!response) throw new LinkError("OpenNeuro doesn't have this file.");
-  const bytes = await readBody(response, pointer?.size, onProgress);
+  const bytes = await readBody(response, expected?.size, onProgress);
 
   if (
-    pointer &&
-    (bytes.length !== pointer.size || (pointer.sha256 && (await sha256(bytes)) !== pointer.sha256))
+    expected &&
+    (bytes.length !== expected.size ||
+      (expected.sha256 && (await sha256(bytes)) !== expected.sha256))
   ) {
     throw new LinkError(
       "OpenNeuro's copy of this file doesn't match the version the link is to, so it wasn't opened.",
     );
   }
-  return bytes.buffer;
+  return { buffer: bytes.buffer, warnings: pointer?.unreachable ? [UNCHECKED] : [] };
 }

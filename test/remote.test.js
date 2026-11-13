@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { download, LinkError, NEMAR_GITHUB, OPENNEURO, resolveLink } from '../js/remote.js';
+import {
+  download,
+  LinkError,
+  NEMAR_GITHUB,
+  OPENNEURO,
+  resolveLink,
+  UNCHECKED,
+} from '../js/remote.js';
 
 const FILE = 'sub-01/ses-1/eeg/sub-01_ses-1_task-rest_eeg.edf';
 const GITHUB = `https://github.com/nemarDatasets/on003194/blob/main/${FILE}`;
@@ -105,8 +112,11 @@ test('downloads a recording, checks it against its pointer and reports progress'
     [target.dataUrl]: streamed([bytes.slice(0, 3000), bytes.slice(3000)]),
   });
   const progress = [];
-  const buffer = await download(target, { onProgress: (...args) => progress.push(args) });
+  const { buffer, warnings } = await download(target, {
+    onProgress: (...args) => progress.push(args),
+  });
   assert.deepEqual(new Uint8Array(buffer), bytes);
+  assert.deepEqual(warnings, []);
   assert.deepEqual(progress, [
     [3000, 5000],
     [5000, 5000],
@@ -117,13 +127,15 @@ test('downloads a recording, checks it against its pointer and reports progress'
   }
 });
 
+const bytesFrom = async (downloading) => new Uint8Array((await downloading).buffer);
+
 test('checks only the size when the pointer has no SHA-256 hash', async (t) => {
   const bytes = bytesOf(300);
   fakeFetch(t, {
     [target.pointerUrl]: new Response(`/annex/objects/${'MD5E'}-s300--${'0'.repeat(32)}.edf\n`),
     [target.dataUrl]: streamed([bytes]),
   });
-  assert.deepEqual(new Uint8Array(await download(target)), bytes);
+  assert.deepEqual(await bytesFrom(download(target)), bytes);
 });
 
 test('refuses a copy that differs from the version the link is to', async (t) => {
@@ -143,12 +155,14 @@ test('refuses a copy that differs from the version the link is to', async (t) =>
 test('takes a file kept in git itself straight from GitHub', async (t) => {
   const bytes = bytesOf(2000);
   const calls = fakeFetch(t, { [target.pointerUrl]: new Response(bytes) });
-  assert.deepEqual(new Uint8Array(await download(target)), bytes);
+  const { buffer, warnings } = await download(target);
+  assert.deepEqual(new Uint8Array(buffer), bytes);
+  assert.deepEqual(warnings, []);
   assert.equal(calls.mock.callCount(), 1);
 
   const small = new TextEncoder().encode('0       not a pointer');
   fakeFetch(t, { [target.pointerUrl]: new Response(small) });
-  assert.deepEqual(new Uint8Array(await download(target)), small);
+  assert.deepEqual(await bytesFrom(download(target)), small);
 });
 
 test('says when the file is missing from GitHub or from OpenNeuro', async (t) => {
@@ -160,18 +174,59 @@ test('says when the file is missing from GitHub or from OpenNeuro', async (t) =>
   await assert.rejects(download({ ...target, pointerUrl: null }), /doesn't have this file/);
 });
 
+test('opens the OpenNeuro copy unchecked, and says so, when GitHub does not answer', async (t) => {
+  const bytes = bytesOf(600);
+  const unchecked = async (pointerAnswer) => {
+    fakeFetch(t, { [target.pointerUrl]: pointerAnswer, [target.dataUrl]: streamed([bytes]) });
+    const { buffer, warnings } = await download(target, { pointerWait: 20 });
+    assert.deepEqual(new Uint8Array(buffer), bytes);
+    assert.deepEqual(warnings, [UNCHECKED]);
+  };
+  await unchecked(() => Promise.reject(new TypeError('Failed to fetch')));
+  await unchecked(new Response('', { status: 503 }));
+
+  // Node, unlike a browser tab, won't stay running for the wait's own timer alone, so a server
+  // that hangs keeps a timer of its own until the download gives up on it.
+  const hanging = (signal, giveUp) => {
+    const running = setTimeout(() => {}, 5000);
+    signal.addEventListener('abort', () => {
+      clearTimeout(running);
+      giveUp(signal.reason);
+    });
+  };
+  // A server that never answers, as when the network can't reach it, until the wait runs out.
+  await unchecked(({ signal }) => new Promise((resolve, reject) => hanging(signal, reject)));
+  // One whose answer stalls partway through.
+  await unchecked(
+    ({ signal }) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('/annex/'));
+            hanging(signal, (reason) => controller.error(reason));
+          },
+        }),
+      ),
+  );
+});
+
 test('reports a server error and a lost connection in words', async (t) => {
-  fakeFetch(t, { [target.pointerUrl]: new Response('', { status: 503 }) });
-  await assert.rejects(download(target), /failed with HTTP status 503/);
+  const direct = { ...target, pointerUrl: null };
+  fakeFetch(t, { [target.dataUrl]: new Response('', { status: 503 }) });
+  await assert.rejects(download(direct), /failed with HTTP status 503/);
   t.mock.method(globalThis, 'fetch', () => Promise.reject(new TypeError('Failed to fetch')));
   await assert.rejects(download(target), /could not be downloaded\. Check your connection/);
 });
 
 test('lets a cancelled download end as an abort, not as a failure', async (t) => {
-  t.mock.method(globalThis, 'fetch', () =>
-    Promise.reject(new DOMException('The user aborted a request.', 'AbortError')),
-  );
-  await assert.rejects(download(target), { name: 'AbortError' });
+  const reject = ({ signal }) => Promise.reject(signal.reason);
+  t.mock.method(globalThis, 'fetch', (url, options) => reject(options));
+  const stopped = new AbortController();
+  stopped.abort();
+  await assert.rejects(download(target, { signal: stopped.signal }), { name: 'AbortError' });
+  await assert.rejects(download({ ...target, pointerUrl: null }, { signal: stopped.signal }), {
+    name: 'AbortError',
+  });
 });
 
 test('grows the buffer when the size is not known, and trims it at the end', async (t) => {
@@ -181,8 +236,11 @@ test('grows the buffer when the size is not known, and trims it at the end', asy
   fakeFetch(t, {
     [target.dataUrl]: streamed([bytes.slice(0, 100), bytes.slice(100, 150), bytes.slice(150)]),
   });
-  const buffer = await download(direct, { onProgress: (...args) => progress.push(args) });
+  const { buffer, warnings } = await download(direct, {
+    onProgress: (...args) => progress.push(args),
+  });
   assert.deepEqual(new Uint8Array(buffer), bytes);
+  assert.deepEqual(warnings, []);
   assert.equal(buffer.byteLength, 700);
   assert.deepEqual(
     progress.map(([, total]) => total),
@@ -190,5 +248,5 @@ test('grows the buffer when the size is not known, and trims it at the end', asy
   );
 
   fakeFetch(t, { [target.dataUrl]: streamed([bytes], { 'content-length': '700' }) });
-  assert.deepEqual(new Uint8Array(await download(direct, { onProgress() {} })), bytes);
+  assert.deepEqual(await bytesFrom(download(direct, { onProgress() {} })), bytes);
 });

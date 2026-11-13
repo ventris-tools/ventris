@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { resolveLink } from '../js/remote.js';
+import { resolveLink, UNCHECKED } from '../js/remote.js';
 import { buildEdf } from './support/edf.js';
 import { installDom } from './support/dom.js';
 
@@ -160,6 +160,19 @@ test('says a recording may be too large when the browser cannot hold it', async 
     'sub-01_task-huge_eeg.edf could not be opened. It may be too large for this browser.',
   );
   $('close-loader').click();
+});
+
+test("opens OpenNeuro's copy with a note when GitHub doesn't answer", async () => {
+  const link = linkTo('sub-01_task-unreachable_eeg.edf');
+  serve(link);
+  answers.set(resolveLink(link).pointerUrl, () => Promise.reject(new TypeError('Failed to fetch')));
+  submit(link);
+  await until(() => shown() === nameOf(link));
+  assert.equal(shown(), nameOf(link));
+  assert.equal($('loader').open, false);
+  assert.equal($('recording-note').hidden, false);
+  assert.equal($('recording-note').textContent, UNCHECKED);
+  assert.equal(address(), `#url=${link}`);
 });
 
 test('the demo stops a download under way and takes the link out of the address', async () => {
