@@ -64,7 +64,7 @@ This is why only four kinds of annotation get a colour: no fifth colour stays ap
 
 ## Where text goes
 
-The viewer keeps to labels and short captions, and `help.html` holds anything that takes a sentence. The exceptions are the privacy promise, the medical disclaimer and messages about the file that's open. Help opens in a new tab, so that reading it doesn't close the recording.
+The viewer keeps to labels and short captions, and `help/index.html` holds anything that takes a sentence. The exceptions are the privacy promise, the medical disclaimer and messages about the file that's open. Help opens in a new tab, so that reading it doesn't close the recording.
 
 ## Deploy
 
@@ -120,6 +120,6 @@ List everything that comes with its own license in [licenses/README.md](licenses
 The README promises that a recording never leaves the computer. The Content Security Policy blocks XHR, WebSockets and loads from other hosts, and fetch everywhere but the two places below, but it can't stop navigation or WebRTC, so the promise rests on the code too. Two checks protect it:
 
 - ESLint rejects network calls and navigation in `js/`. The one exception is `fetch` in `js/remote.js`, which downloads a public recording opened by link and sends nothing of its own.
-- `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help.html` changes. The policy in `index.html` lets `fetch` reach only the two places named in `js/remote.js`: OpenNeuro's public bucket and NEMAR's datasets on GitHub, each limited to its own folder.
+- `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help/index.html` changes. The policy in `index.html` lets `fetch` reach only the two places named in `js/remote.js`: OpenNeuro's public bucket and NEMAR's datasets on GitHub, each limited to its own folder.
 
 These catch mistakes, not deliberate workarounds, so review changes to them with care. If a change really needs one of them relaxed, update the README's promise in the same pull request.

@@ -74,7 +74,7 @@ test('offers help, the theme switch and the GitHub link in the footer', () => {
   const area = document.querySelector('.site-footer');
   const help = area.querySelector('.help-link');
   const link = area.querySelector('.github-link');
-  assert.equal(help.getAttribute('href'), 'help.html');
+  assert.equal(help.getAttribute('href'), 'help/');
   assert.equal(help.textContent.trim(), 'Help');
   assert.ok(area.querySelector('.theme-toggle'));
   assert.equal(link.href, 'https://github.com/ventris-tools/ventris');

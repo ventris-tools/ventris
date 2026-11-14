@@ -23,7 +23,7 @@ const policy = (connect) => [
 // help page has no reason to reach anything.
 const PAGES = {
   'index.html': policy(`${OPENNEURO} ${NEMAR_GITHUB}`),
-  'help.html': policy("'none'"),
+  'help/index.html': policy("'none'"),
 };
 
 for (const [page, expected] of Object.entries(PAGES)) {
