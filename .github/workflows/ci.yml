@@ -24,6 +24,8 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run coverage
+      # The runner comes with Google Chrome, which the smoke test finds on its own.
+      - run: npm run test:browser
       - name: Build the site
         run: mkdir _site && cp -R index.html help styles.css favicon.svg js fonts LICENSE licenses _site/
       # Each page's links are relative to its own folder, so each is checked from there.

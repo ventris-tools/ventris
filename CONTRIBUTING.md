@@ -23,6 +23,10 @@ npm run coverage
 ```
 
 ```bash
+npm run test:browser
+```
+
+```bash
 npm run lint
 ```
 
@@ -31,6 +35,8 @@ npm run format:check
 ```
 
 `npm run coverage` fails if coverage falls below the floors in `package.json`. Raise the floors when coverage improves, so that it can't slip back.
+
+`npm test` runs the app in jsdom, which has no Content Security Policy, real canvas or form checks. `npm run test:browser` opens the pages in headless Chrome and fails on any error, blocked load or missing file. It finds Chrome in the usual places, or set `CHROME_PATH`, and skips without it except in CI.
 
 `npm run lint` checks the JavaScript with ESLint, the CSS with stylelint's recommended rules and the HTML with html-validate's. Stylelint's `no-descending-specificity` is off, since it flags selectors that never match the same element.
 
