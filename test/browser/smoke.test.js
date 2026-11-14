@@ -134,12 +134,16 @@ class Tab {
     await tab.send('Runtime.enable');
     await tab.send('Log.enable');
     await tab.send('Page.enable');
-    // A blocked load or script is reported here as well as in the console.
+    // A blocked load or script is reported here as well as in the console. Scrollbars take
+    // room from the page, as they do on Linux and Windows, where macOS lays them over it.
     await tab.send('Page.addScriptToEvaluateOnNewDocument', {
       source: `window.violations = [];
         addEventListener('securitypolicyviolation', (event) => {
           window.violations.push(event.violatedDirective + ' ' + event.blockedURI);
-        });`,
+        });
+        const bars = new CSSStyleSheet();
+        bars.replaceSync('::-webkit-scrollbar { width: 15px; height: 15px; }');
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, bars];`,
     });
     return tab;
   }

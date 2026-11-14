@@ -109,11 +109,14 @@ button, select, input { font: inherit; }
   background: var(--surface);
 }
 
-/* Not selectable, so that dragging a box doesn't select the text around the traces. */
+/* Not selectable, so that dragging a box doesn't select the text around the traces. Hidden
+   sideways, because where scrollbars take room, the rows overflowing narrows the frame under
+   a canvas laid out a moment before, and a sideways scrollbar would cut its height too. */
 .trace-frame {
   position: relative;
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-x: none;
   -webkit-user-select: none;
