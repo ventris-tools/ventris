@@ -73,6 +73,9 @@ const bandBody = $('band-rows');
 const bandNote = $('band-note');
 const annotationSection = $('annotations');
 const annotationList = $('annotation-list');
+const timeSection = $('time-domain');
+const timeList = $('time-rows');
+const timeNote = $('time-note');
 
 // The window is the length chosen in the list, and length is how much is on screen, which a
 // zoom shortens. Rows are the channels a zoom keeps, or null for all of them. A zoom keeps
@@ -88,6 +91,11 @@ const state = {
 };
 let bandTimer = 0;
 let bandRun = 0;
+// What the band shares were last measured over, so that a change of trace size or of the
+// rows in view measures nothing again.
+let measured = {};
+// The recording whose time figures are shown, if any.
+let timed = null;
 let progressTimer = 0;
 let openRequest = 0;
 let opening = false;
@@ -178,10 +186,21 @@ function showDetails(recording) {
   fillRows($('info-channels'), channels);
   fillRows($('info-filters'), filters);
   $('channel-names').textContent = recording.channels.map(({ label }) => label).join(', ');
+  timed = null;
+  fillRows(timeList, []);
+  timeNote.textContent = '';
+  showTimes();
+}
 
+// The time figures read every sample in the file, which holds the page for a long recording,
+// and their section starts closed, so they wait until it's open.
+function showTimes() {
+  const { recording } = state;
+  if (!timeSection.open || timed === recording) return;
+  timed = recording;
   const stats = timeStats(recording.channels);
-  fillRows($('time-rows'), stats ? timeRows(stats) : []);
-  $('time-note').textContent = stats
+  fillRows(timeList, stats ? timeRows(stats) : []);
+  timeNote.textContent = stats
     ? `Whole file · ${count(stats.channels, 'EEG channel')}`
     : BAND_PROBLEMS['no-eeg'];
 }
@@ -267,6 +286,11 @@ function refresh() {
   );
   showZoom();
   view.setView(start, length, gain, rows);
+  // Bands depend only on the recording and the stretch of it on screen.
+  if (measured.recording === recording && measured.start === start && measured.length === length) {
+    return;
+  }
+  measured = { recording, start, length };
   clearTimeout(bandTimer);
   bandRun += 1;
   bandTimer = setTimeout(updateBands, 60);
@@ -511,6 +535,7 @@ position.addEventListener('input', () => {
 });
 windowSelect.addEventListener('change', () => setWindow(Number(windowSelect.value)));
 resetButton.addEventListener('click', resetZoom);
+timeSection.addEventListener('toggle', showTimes);
 canvas.addEventListener('dblclick', resetZoom);
 
 // Page keys follow the slider convention, where Page Up means later. The canvas keeps the

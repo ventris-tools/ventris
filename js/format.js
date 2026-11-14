@@ -29,9 +29,16 @@ export function decimalsFor(range) {
   return Math.min(MAX_DECIMALS, Math.max(1, 2 - Math.floor(Math.log10(range))));
 }
 
+// Making a formatter takes far longer than using one, and the readout writes an amount at
+// every move of the pointer, so each number of decimals keeps its own.
+const amountFormats = new Map();
+
 export function amount(value, unit, decimals = 1) {
-  const digits = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
-  const number = value.toLocaleString('en-US', digits);
+  if (!amountFormats.has(decimals)) {
+    const digits = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+    amountFormats.set(decimals, new Intl.NumberFormat('en-US', digits));
+  }
+  const number = amountFormats.get(decimals).format(value);
   // Rounding can leave a sign on nothing at all, as in -0.0.
   const signed = /[1-9]/.test(number) ? number.replace('-', '−') : number.replace('-', '');
   return `${signed} ${unitLabel(unit)}`.trim();
