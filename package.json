@@ -7,9 +7,9 @@
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
     "coverage": "node --test --experimental-test-coverage --test-coverage-include=\"js/**\" --test-coverage-lines=99 --test-coverage-branches=96 --test-coverage-functions=98 \"test/*.test.js\"",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "lint": "eslint js test eslint.config.js",
+    "format": "prettier --write js test \"*.{js,json}\"",
+    "format:check": "prettier --check js test \"*.{js,json}\""
   },
   "engines": {
     "node": ">=22.13"
