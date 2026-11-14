@@ -170,6 +170,22 @@ test('turns a mostly empty column of numbers into events', () => {
   ]);
 });
 
+test('keeps an event code as the file writes it, not as single precision rounds it', () => {
+  const rows = timed(100, [
+    [1, '0.1'],
+    [2, ''],
+    [3, ' 16777217 '],
+    [4, ''],
+    [5, '1.50'],
+    [6, ''],
+  ]);
+  const { annotations } = parseCsv(buildCsv(['time', 'Cz', 'Trigger'], rows));
+  assert.deepEqual(
+    annotations.map(({ text: label }) => label),
+    ['0.1', '16777217', '1.50'],
+  );
+});
+
 test('names the column of each event when there is more than one', () => {
   const rows = timed(100, [
     [1, '', 'start'],

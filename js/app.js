@@ -17,7 +17,6 @@ import {
 const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
 const DEMO_NAME = 'Demo (synthetic data)';
-const CHOOSE = 'Choose an EDF or CSV file';
 
 // EDF files turn up under many names, so only a name that says text picks the CSV reader.
 const TEXT_FILE = /\.(?:csv|tsv|txt)$/i;
@@ -27,6 +26,9 @@ const LINK_MARK = '#url=';
 
 // A file that takes longer than this to read shows the dialog, so a drop gets a response.
 const PROGRESS_DELAY = 150;
+
+// A file at least this large, in bytes, takes long enough to open that the dialog says so first.
+const PAINT_FIRST = 16e6;
 
 // How long measuring bands can hold the page before it lets a frame through, in milliseconds.
 const BAND_SLICE = 10;
@@ -45,6 +47,8 @@ const loader = $('loader');
 const closeButton = $('close-loader');
 const chooseButton = $('choose-file');
 const chooseLabel = $('choose-label');
+// What the file button says when it isn't busy, in the page's own words.
+const CHOOSE = chooseLabel.textContent;
 const demoButton = $('show-demo');
 const demoOffer = $('demo-offer');
 const fileInput = $('file-input');
@@ -86,6 +90,7 @@ let bandTimer = 0;
 let bandRun = 0;
 let progressTimer = 0;
 let openRequest = 0;
+let opening = false;
 let downloading = null;
 
 function showHover(hit, announce = false) {
@@ -344,19 +349,43 @@ function openLoader() {
 
 function stopReading() {
   clearTimeout(progressTimer);
+  opening = false;
+  downloading = null;
   chooseButton.disabled = false;
   chooseLabel.textContent = CHOOSE;
   linkButton.disabled = false;
   linkStatus.hidden = true;
 }
 
-// Each new recording to open stops the download of the one before.
+// Each new recording to open stops the one before, and its download if it has one.
 function beginOpening() {
   openRequest += 1;
+  clearTimeout(progressTimer);
   downloading?.abort();
   downloading = null;
   setError('');
   return openRequest;
+}
+
+function opened(recording, name, link) {
+  stopReading();
+  show(recording, name);
+  setAddress(link);
+  loader.close();
+}
+
+function failed(message) {
+  stopReading();
+  openLoader();
+  setError(message);
+}
+
+// Reading a large file holds the page, so the dialog says so and gets a frame to show it.
+async function paintFirst(buffer, status) {
+  if (buffer.byteLength < PAINT_FIRST) return;
+  openLoader();
+  status.textContent = 'Opening…';
+  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
 function linkInAddress() {
@@ -381,43 +410,41 @@ function setAddress(link) {
 // Reading can take a while, so whatever was opened last is what stays on screen.
 async function openFile(file) {
   const request = beginOpening();
+  opening = true;
   chooseButton.disabled = true;
   chooseLabel.textContent = 'Reading…';
-  clearTimeout(progressTimer);
   progressTimer = setTimeout(openLoader, PROGRESS_DELAY);
   try {
     const buffer = await file.arrayBuffer();
     if (request !== openRequest) return;
+    await paintFirst(buffer, chooseLabel);
+    if (request !== openRequest) return;
     const parse = TEXT_FILE.test(file.name) ? parseCsv : parseEdf;
-    show(parse(buffer), file.name);
-    setAddress('');
-    loader.close();
+    opened(parse(buffer), file.name, '');
   } catch (error) {
     if (request !== openRequest) return;
-    openLoader();
-    setError(
+    failed(
       error instanceof EdfError || error instanceof CsvError
         ? error.message
         : `${file.name} could not be opened. It may be too large for this browser.`,
     );
-  } finally {
-    if (request === openRequest) stopReading();
   }
 }
 
 // A download takes longer than reading a file, so the dialog stays open to show its progress.
+// A link that can't be opened still stops the download before it, as any new one does.
 async function openLink(text) {
+  const request = beginOpening();
   let target;
   try {
     target = resolveLink(text);
   } catch (error) {
-    openLoader();
-    setError(error.message);
+    failed(error.message);
     return;
   }
-  const request = beginOpening();
   const controller = new AbortController();
   downloading = controller;
+  opening = true;
   linkInput.value = target.link;
   linkButton.disabled = true;
   linkStatus.textContent = 'Downloading…';
@@ -431,21 +458,16 @@ async function openLink(text) {
       },
     });
     if (request !== openRequest) return;
-    show(parseEdf(buffer), target.name);
-    setAddress(target.link);
-    loader.close();
+    await paintFirst(buffer, linkStatus);
+    if (request !== openRequest) return;
+    opened(parseEdf(buffer), target.name, target.link);
   } catch (error) {
     if (request !== openRequest) return;
-    setError(
+    failed(
       error instanceof LinkError || error instanceof EdfError
         ? error.message
         : `${target.name} could not be opened. It may be too large for this browser.`,
     );
-  } finally {
-    if (request === openRequest) {
-      downloading = null;
-      stopReading();
-    }
   }
 }
 
@@ -454,6 +476,12 @@ openButton.addEventListener('click', () => {
   openLoader();
 });
 closeButton.addEventListener('click', () => loader.close());
+// Closing the dialog, with its button or Escape, gives up on whatever it was opening.
+loader.addEventListener('close', () => {
+  if (!opening) return;
+  beginOpening();
+  stopReading();
+});
 chooseButton.addEventListener('click', () => fileInput.click());
 demoButton.addEventListener('click', () => {
   beginOpening();

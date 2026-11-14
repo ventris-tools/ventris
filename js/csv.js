@@ -91,6 +91,7 @@ function readColumns(body, names, delimiter, timeIndex) {
   const decimalComma = delimiter !== ',';
   const columns = names.map((name, index) => ({
     name,
+    index,
     values: index === timeIndex ? new Float64Array(rows) : new Float32Array(rows),
     numbers: 0,
     words: [],
@@ -144,16 +145,17 @@ function labelOf(name, index) {
   return { label: label || `Channel ${index + 1}`, unit: unit.replace(/^[µμ]/, 'u') };
 }
 
-// Events are numbered codes or words. With more than one column of them, each says which
-// column it came from.
-function eventsOf(columns, fs) {
+// Events are numbered codes or words. A code is taken as the file writes it, since its value
+// was kept in single precision, where 0.1 is 0.10000000149011612. With more than one column
+// of events, each says which column it came from.
+function eventsOf(columns, fs, cellAt) {
   const named = columns.length > 1;
   const events = [];
-  for (const { name, values, words } of columns) {
+  for (const { name, index, values, words } of columns) {
     const text = (value) => (named ? `${name}: ${value}` : value);
     values.forEach((value, row) => {
       if (Number.isFinite(value)) {
-        events.push({ time: row / fs, duration: 0, text: text(String(value)) });
+        events.push({ time: row / fs, duration: 0, text: text(cellAt(row, index)) });
       }
     });
     for (const word of words) {
@@ -221,7 +223,7 @@ export function parseCsv(buffer) {
       if (column.numbers < rows) fillGaps(column.values);
       return { ...labelOf(column.name, index), fs, data: column.values };
     }),
-    annotations: eventsOf(events, fs),
+    annotations: eventsOf(events, fs, (row, index) => cellsOf(body[row], delimiter)[index].trim()),
     warnings,
     info: {
       date: null,

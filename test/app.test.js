@@ -508,6 +508,46 @@ test('a slow read opens the dialog so that a drop shows progress', async () => {
   assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
 });
 
+test('a large file opens the dialog and says so before reading it holds the page', async () => {
+  const big = slowFile('big.edf', new Uint8Array(16e6).buffer);
+  drop(big);
+  big.release();
+  await wait(0);
+  assert.equal($('loader').open, true);
+  assert.equal($('choose-label').textContent, 'Opening…');
+  await until(() => !$('error').hidden);
+  assert.equal($('error').textContent, 'This does not look like an EDF file.');
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+  $('close-loader').click();
+});
+
+test('closing the dialog gives up on a file still being read', async () => {
+  const before = $('recording-name').textContent;
+  const slow = slowFile('abandoned.edf', edf());
+  drop(slow);
+  await wait(200);
+  assert.equal($('loader').open, true);
+  $('close-loader').click();
+  assert.equal($('choose-file').disabled, false);
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+  slow.release();
+  await wait(0);
+  await wait(0);
+  assert.equal($('recording-name').textContent, before);
+});
+
+test('the file picker offers every file, since EDF files turn up under many names', () => {
+  assert.equal($('file-input').hasAttribute('accept'), false);
+});
+
+test('the link field takes an address written without https://', () => {
+  const input = $('link-input');
+  input.value = 'github.com/nemarDatasets/on003194/blob/main/sub-01/eeg/sub-01_eeg.edf';
+  assert.equal(input.checkValidity(), true);
+  input.value = '';
+  assert.equal(input.checkValidity(), false);
+});
+
 test('marks a drag over the page and clears it on drop', async () => {
   const over = new window.Event('dragover', { cancelable: true });
   over.dataTransfer = { types: ['Files'] };

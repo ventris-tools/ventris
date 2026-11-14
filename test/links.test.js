@@ -48,6 +48,7 @@ function heldBody(bytes) {
           controller.enqueue(bytes.slice(0, half));
           signal.addEventListener('abort', () => controller.error(signal.reason));
           released.then(() => {
+            if (signal.aborted) return;
             controller.enqueue(bytes.slice(half));
             controller.close();
           });
@@ -178,6 +179,43 @@ test('the demo stops a download under way and takes the link out of the address'
   assert.equal($('open-link').disabled, false);
   await wait(10);
   assert.equal($('error').hidden, true);
+});
+
+test('closing the dialog stops a download under way', async () => {
+  const before = { name: shown(), address: address() };
+  const link = linkTo('sub-01_task-closed_eeg.edf');
+  const held = heldBody(recording());
+  serve(link, recording(), held.body);
+  submit(link);
+  await until(() => $('link-status').textContent.includes(' of '));
+
+  $('close-loader').click();
+  assert.equal(requests.at(-1).signal.aborted, true);
+  assert.equal($('link-status').hidden, true);
+  assert.equal($('open-link').disabled, false);
+  held.release();
+  await wait(10);
+  assert.equal(shown(), before.name);
+  assert.equal(address(), before.address);
+  assert.equal($('loader').open, false);
+});
+
+test('a link that cannot be opened stops the download before it, and its error stays', async () => {
+  const before = shown();
+  const link = linkTo('sub-01_task-replaced_eeg.edf');
+  const held = heldBody(recording());
+  serve(link, recording(), held.body);
+  submit(link);
+  await until(() => $('link-status').textContent.includes(' of '));
+
+  submit('https://example.com/sub-01_eeg.edf');
+  assert.equal(requests.at(-1).signal.aborted, true);
+  held.release();
+  await wait(10);
+  assert.match($('error').textContent, /NEMAR datasets on GitHub, or to OpenNeuro/);
+  assert.equal($('error').hidden, false);
+  assert.equal(shown(), before);
+  $('close-loader').click();
 });
 
 test('a link that arrives late does not replace what was opened after it', async () => {

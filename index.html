@@ -154,14 +154,16 @@
       <strong id="choose-label">Choose an EDF or CSV file</strong>
       <span>or drop it here</span>
     </button>
-    <input id="file-input" type="file" accept=".edf,.csv,.tsv,.txt" hidden>
+    <!-- No accept filter: EDF files turn up under many names, and app.js reads any file. -->
+    <input id="file-input" type="file" hidden>
     <form class="link-form" id="link-form">
       <div class="link-head">
         <label for="link-input">Or open a public recording by link</label>
         <a href="help/#links" target="_blank" rel="noopener noreferrer">Which links?</a>
       </div>
       <div class="link-row">
-        <input id="link-input" type="url" placeholder="https://github.com/nemarDatasets/…" required autocomplete="off" spellcheck="false">
+        <!-- Text rather than url, which would refuse an address without https:// that js/remote.js reads. -->
+        <input id="link-input" type="text" inputmode="url" placeholder="https://github.com/nemarDatasets/…" required autocomplete="off" autocapitalize="off" spellcheck="false">
         <button class="button" id="open-link" type="submit">Open</button>
       </div>
       <p class="note link-status" id="link-status" hidden></p>
