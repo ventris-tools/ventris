@@ -250,7 +250,8 @@ after(async () => {
     await stopped;
   }
   server?.close();
-  if (profile) rmSync(profile, { recursive: true, force: true });
+  // Chrome's helper processes can still be writing to the profile after Chrome itself stops.
+  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test(
