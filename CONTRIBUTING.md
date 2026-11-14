@@ -8,7 +8,7 @@ Follow [Run it locally](README.md#run-it-locally) in the README. The app has no 
 
 ## Test
 
-The development tools need Node.js 22.13 or later.
+The development tools need Node.js 22.22.2 or a later 22, 24.15 or a later 24, or 26 and up, as jsdom does.
 
 ```bash
 npm install
