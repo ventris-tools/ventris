@@ -367,6 +367,24 @@ test(
   },
 );
 
+// The policy has no worker-src, so script-src 'self' has to let the worker that reads files in.
+test(
+  'reads a file in a worker the policy allows, and shows what the reader says',
+  { skip },
+  async () => {
+    await tab.evaluate(`(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(600).fill(120)], 'junk.edf'));
+    dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, cancelable: true }));
+  })()`);
+    await tab.until(`!document.getElementById('error').hidden`);
+    const error = await tab.evaluate(`document.getElementById('error').textContent`);
+    assert.equal(error, 'This does not look like an EDF file.');
+    await tab.evaluate(`document.getElementById('close-loader').click()`);
+    assert.deepEqual(await tab.problems(), []);
+  },
+);
+
 test('the help page opens with nothing blocked, missing or thrown', { skip }, async () => {
   await tab.goto(`${origin}/help/`);
   assert.equal(await tab.evaluate('document.title'), 'Help · Ventris');

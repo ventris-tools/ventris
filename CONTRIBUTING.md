@@ -47,6 +47,7 @@ npm run format:check
 | `js/recording.js` | Describes the recording every reader returns, and its shared limits |
 | `js/edf.js` | Reads EDF and EDF+ files |
 | `js/csv.js` | Reads EEG saved as CSV, with a header row and a column of times |
+| `js/open-worker.js` | Reads a file in a worker, so the page stays responsive, and measures each channel's spread and baseline |
 | `js/channels.js` | Reads the kind of each channel from its label |
 | `js/dsp.js` | Computes power spectra, band shares and time statistics |
 | `js/format.js` | Writes times and amounts for the interface |
@@ -131,5 +132,7 @@ The README promises that a recording never leaves the computer. The Content Secu
 
 - ESLint rejects network calls and navigation in `js/`. The one exception is `fetch` in `js/remote.js`, which downloads a public recording opened by link and sends nothing of its own.
 - `test/privacy.test.js` fails if the Content Security Policy in `index.html` or `help/index.html` changes. The policy in `index.html` lets `fetch` reach only the two places named in `js/remote.js`: OpenNeuro's public bucket and NEMAR's datasets on GitHub, each limited to its own folder.
+
+The policy is set in a `<meta>` tag, and a worker doesn't inherit one. So inside `js/open-worker.js`, which holds every file opened, and inside the modules it imports, the policy blocks nothing, and only ESLint's check keeps them from sending anything.
 
 These catch mistakes, not deliberate workarounds, so review changes to them with care. If a change really needs one of them relaxed, update the README's promise in the same pull request.

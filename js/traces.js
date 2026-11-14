@@ -273,11 +273,14 @@ export class TraceView {
   }
 
   // colors are those of eventColors, which the caller may already have for its own list.
-  setRecording(recording, colors = eventColors(recording.annotations)) {
+  // spreads and baselines are those of robustSpread and baseline for each channel, which read
+  // every sample, so the worker that opens a file measures them there and sends them along.
+  setRecording(recording, colors = eventColors(recording.annotations), levels = {}) {
+    const { channels } = recording;
     this.recording = recording;
     this.events = recording.annotations.map((event, index) => ({ ...event, color: colors[index] }));
-    this.spreads = recording.channels.map((channel) => robustSpread(channel.data));
-    this.baselines = recording.channels.map(({ data, fs }) => baseline(data, fs));
+    this.spreads = levels.spreads ?? channels.map(({ data }) => robustSpread(data));
+    this.baselines = levels.baselines ?? channels.map(({ data, fs }) => baseline(data, fs));
     this.firstRow = 0;
     this.rowCount = recording.channels.length;
     this.cursor = null;
