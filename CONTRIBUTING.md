@@ -36,6 +36,7 @@ npm run format:check
 
 | File | Purpose |
 |---|---|
+| `js/recording.js` | Describes the recording every reader returns, and its shared limits |
 | `js/edf.js` | Reads EDF and EDF+ files |
 | `js/csv.js` | Reads EEG saved as CSV, with a header row and a column of times |
 | `js/channels.js` | Reads the kind of each channel from its label |

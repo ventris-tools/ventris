@@ -3,7 +3,7 @@
 // raw.to_data_frame(). A column named for time gives the sample rate, the other columns of
 // numbers become channels, and a column that is mostly empty holds the events.
 
-import { NO_SUBJECT } from './edf.js';
+import { MAX_SAMPLE_RATE, MAX_SECONDS, NO_INFO } from './recording.js';
 
 export class CsvError extends Error {}
 
@@ -15,10 +15,6 @@ const DEVICE_RATES = [
   16000, 16384,
 ];
 const CLOSE_ENOUGH = 0.005;
-
-// Anything past these is a misread time column rather than a recording.
-const MAX_SAMPLE_RATE = 1e6;
-const MAX_SECONDS = 1e9;
 
 // A step this much longer or shorter than the usual one is a break in the recording.
 const STEP_TOLERANCE = 0.5;
@@ -230,18 +226,7 @@ export function parseCsv(buffer) {
     }),
     annotations: eventsOf(events, fs, (row, index) => cellsOf(body[row], delimiter)[index].trim()),
     warnings,
-    info: {
-      date: null,
-      time: null,
-      subject: NO_SUBJECT,
-      project: null,
-      experimenter: null,
-      device: null,
-      // A CSV says nothing about filtering.
-      highpass: null,
-      lowpass: null,
-      notch: null,
-      firstTime: times[0] * scale,
-    },
+    // A CSV says nothing about the participant or filtering.
+    info: { ...NO_INFO, firstTime: times[0] * scale },
   };
 }
