@@ -1,7 +1,5 @@
-import { CsvError, parseCsv } from './csv.js';
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
-import { EdfError, parseEdf } from './edf.js';
 import { amount, count, decimalsFor, downloadProgress, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
 import { download, LinkError, resolveLink } from './remote.js';
@@ -24,11 +22,9 @@ const TEXT_FILE = /\.(?:csv|tsv|txt)$/i;
 // A recording opened by link is named after this in the address, so the page can be shared.
 const LINK_MARK = '#url=';
 
-// A file that takes longer than this to read shows the dialog, so a drop gets a response.
+// A file that takes longer than this to read and open shows the dialog, so a drop gets a
+// response.
 const PROGRESS_DELAY = 150;
-
-// A file at least this large, in bytes, takes long enough to open that the dialog says so first.
-const PAINT_FIRST = 16e6;
 
 // How long measuring bands can hold the page before it lets a frame through, in milliseconds.
 const BAND_SLICE = 10;
@@ -100,6 +96,8 @@ let progressTimer = 0;
 let openRequest = 0;
 let opening = false;
 let downloading = null;
+// The worker opening a file, if any.
+let opener = null;
 
 function showHover(hit, announce = false) {
   if (!hit) {
@@ -335,7 +333,8 @@ function formatWindow(seconds, duration) {
   return seconds < 120 ? `${seconds} s` : formatClock(seconds);
 }
 
-function show(recording, name, start = 0) {
+// levels are the spreads and baselines of the channels, when the worker has measured them.
+function show(recording, name, { start = 0, levels } = {}) {
   Object.assign(state, { recording, start, gain: 1, rows: null, zoom: null });
   viewer.hidden = false;
   demoOffer.hidden = recording.format === 'Synthetic';
@@ -346,7 +345,7 @@ function show(recording, name, start = 0) {
   showAnnotations(recording, colors);
   noteLine.textContent = recording.warnings.join(' ');
   noteLine.hidden = recording.warnings.length === 0;
-  view.setRecording(recording, colors);
+  view.setRecording(recording, colors, levels);
 
   // The longest windows depend on how many rows fit on screen, as measured now.
   const choices = windowChoices(recording, view.rowsDrawn());
@@ -360,7 +359,7 @@ function show(recording, name, start = 0) {
 }
 
 function showDemo() {
-  show(demoRecording(), DEMO_NAME, DEMO_START);
+  show(demoRecording(), DEMO_NAME, { start: DEMO_START });
 }
 
 function setError(message) {
@@ -382,19 +381,21 @@ function stopReading() {
   linkStatus.hidden = true;
 }
 
-// Each new recording to open stops the one before, and its download if it has one.
+// Each new recording to open stops the one before, and its download or worker if it has one.
 function beginOpening() {
   openRequest += 1;
   clearTimeout(progressTimer);
   downloading?.abort();
   downloading = null;
+  opener?.terminate();
+  opener = null;
   setError('');
   return openRequest;
 }
 
-function opened(recording, name, link) {
+function opened({ recording, ...levels }, name, link) {
   stopReading();
-  show(recording, name);
+  show(recording, name, { levels });
   setAddress(link);
   loader.close();
 }
@@ -405,13 +406,24 @@ function failed(message) {
   setError(message);
 }
 
-// Reading a large file holds the page, so the dialog says so and gets a frame to show it.
-async function paintFirst(buffer, status) {
-  if (buffer.byteLength < PAINT_FIRST) return;
-  openLoader();
-  status.textContent = 'Opening…';
-  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+// Reading a file and measuring its channels runs in a worker, which keeps the page free, so
+// the dialog can say what it's doing and be closed. The buffer moves to the worker rather
+// than being copied, and the worker stops once it has answered.
+function openInWorker(buffer, reader) {
+  const worker = new Worker(new URL('./open-worker.js', import.meta.url), { type: 'module' });
+  opener = worker;
+  return new Promise((resolve, reject) => {
+    worker.onmessage = ({ data }) => (data.error ? reject(data.error) : resolve(data));
+    // A worker that can't start, or runs out of memory, says nothing more useful than this.
+    const lost = () => reject({ kind: 'other' });
+    worker.onerror = lost;
+    worker.onmessageerror = lost;
+    worker.postMessage({ buffer, reader }, [buffer]);
+  }).finally(() => worker.terminate());
 }
+
+// A reader's own error says what's wrong with the file, so it's shown as it is.
+const readerSaid = (error) => error?.kind === 'edf' || error?.kind === 'csv';
 
 function linkInAddress() {
   const { hash } = new URL(document.URL);
@@ -442,14 +454,14 @@ async function openFile(file) {
   try {
     const buffer = await file.arrayBuffer();
     if (request !== openRequest) return;
-    await paintFirst(buffer, chooseLabel);
+    chooseLabel.textContent = 'Opening…';
+    const result = await openInWorker(buffer, TEXT_FILE.test(file.name) ? 'csv' : 'edf');
     if (request !== openRequest) return;
-    const parse = TEXT_FILE.test(file.name) ? parseCsv : parseEdf;
-    opened(parse(buffer), file.name, '');
+    opened(result, file.name, '');
   } catch (error) {
     if (request !== openRequest) return;
     failed(
-      error instanceof EdfError || error instanceof CsvError
+      readerSaid(error)
         ? error.message
         : `${file.name} could not be opened. It may be too large for this browser.`,
     );
@@ -483,13 +495,14 @@ async function openLink(text) {
       },
     });
     if (request !== openRequest) return;
-    await paintFirst(buffer, linkStatus);
+    linkStatus.textContent = 'Opening…';
+    const result = await openInWorker(buffer, 'edf');
     if (request !== openRequest) return;
-    opened(parseEdf(buffer), target.name, target.link);
+    opened(result, target.name, target.link);
   } catch (error) {
     if (request !== openRequest) return;
     failed(
-      error instanceof LinkError || error instanceof EdfError
+      error instanceof LinkError || readerSaid(error)
         ? error.message
         : `${target.name} could not be opened. It may be too large for this browser.`,
     );

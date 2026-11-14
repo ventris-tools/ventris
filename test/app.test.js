@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import test from 'node:test';
+import { openRecording } from '../js/open-worker.js';
 import { buildCsv, lslCsv } from './support/csv.js';
 import { buildEdf } from './support/edf.js';
 import { installDom } from './support/dom.js';
@@ -32,6 +33,29 @@ function slowFile(name, buffer) {
     release = () => resolve(buffer);
   });
   return { name, arrayBuffer: () => reading, release };
+}
+
+// Workers that keep what they're sent and answer only when a test answers for them.
+function holdWorkers(t) {
+  const workers = [];
+  const { Worker } = globalThis;
+  globalThis.Worker = class {
+    constructor() {
+      workers.push(this);
+    }
+
+    postMessage(message, transfer) {
+      Object.assign(this, { message, transfer });
+    }
+
+    terminate() {
+      this.stopped = true;
+    }
+  };
+  t.after(() => {
+    globalThis.Worker = Worker;
+  });
+  return workers;
 }
 
 const signal = (samples = 256) => ({ label: 'Cz', samples, value: (r, i) => (i % 7) * 100 });
@@ -542,22 +566,71 @@ test('a slow read opens the dialog so that a drop shows progress', async () => {
   assert.equal($('loader').open, true);
   assert.equal($('choose-label').textContent, 'Reading…');
   slow.release();
-  await wait(0);
+  await until(() => !$('loader').open);
   assert.equal($('loader').open, false);
   assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
 });
 
-test('a large file opens the dialog and says so before reading it holds the page', async () => {
-  const big = slowFile('big.edf', new Uint8Array(16e6).buffer);
-  drop(big);
-  big.release();
-  await wait(0);
+test('moves the file to the worker that opens it, rather than copying it', async () => {
+  const buffer = edf();
+  await open('moved.edf', buffer);
+  assert.equal($('recording-name').textContent, 'moved.edf');
+  assert.equal(buffer.detached, true);
+});
+
+test('says a file is being opened, and closing the dialog stops the worker opening it', async (t) => {
+  const workers = holdWorkers(t);
+  const before = $('recording-name').textContent;
+  const buffer = edf();
+  drop(fileOf('held.edf', buffer));
+  await wait(200);
+  const [worker] = workers;
   assert.equal($('loader').open, true);
   assert.equal($('choose-label').textContent, 'Opening…');
-  await until(() => !$('error').hidden);
-  assert.equal($('error').textContent, 'This does not look like an EDF file.');
-  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+  assert.deepEqual(worker.message, { buffer, reader: 'edf' });
+  assert.deepEqual(worker.transfer, [buffer]);
+
   $('close-loader').click();
+  assert.equal(worker.stopped, true);
+  assert.equal($('choose-file').disabled, false);
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+
+  // An answer that comes anyway changes nothing.
+  worker.onmessage({ data: openRecording({ buffer: edf(), reader: 'edf' }).reply });
+  await wait(0);
+  assert.equal($('recording-name').textContent, before);
+  assert.equal($('loader').open, false);
+});
+
+test('a worker that fails, or fails to read a file, says it could not be opened', async (t) => {
+  const workers = holdWorkers(t);
+  const generic = (name) => `${name} could not be opened. It may be too large for this browser.`;
+  drop(fileOf('lost.edf', edf()));
+  await wait(0);
+  workers[0].onerror(new window.Event('error'));
+  await wait(0);
+  assert.equal($('loader').open, true);
+  assert.equal($('error').textContent, generic('lost.edf'));
+  assert.equal(workers[0].stopped, true);
+
+  drop(fileOf('vast.edf', edf()));
+  await wait(0);
+  const message = 'Array buffer allocation failed';
+  workers[1].onmessage({ data: { error: { kind: 'other', message } } });
+  await wait(0);
+  assert.equal($('error').textContent, generic('vast.edf'));
+
+  // Once a newer file replaces it, a file's worker can't even say that the file was bad.
+  drop(fileOf('replaced.edf', edf()));
+  await wait(0);
+  drop(fileOf('newer.edf', edf()));
+  await wait(0);
+  workers[2].onmessage({ data: { error: { kind: 'edf', message: 'Too late.' } } });
+  await wait(0);
+  assert.equal($('error').hidden, true);
+  $('open-recording').click();
+  $('show-demo').click();
+  assert.equal(workers[3].stopped, true);
 });
 
 test('closing the dialog gives up on a file still being read', async () => {
