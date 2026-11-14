@@ -1,0 +1,19 @@
+# Keeps the pinned actions in ci.yml and the development tools in package.json up to date,
+# each through a pull request that has to pass the checks like any other.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      development-tools:
+        patterns: ['*']

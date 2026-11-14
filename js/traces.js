@@ -20,6 +20,10 @@ const LINE_PIXELS = 16;
 const LABEL_SIZE = 12;
 const RANGE_SIZE = 10;
 
+// An annotation's marker is dashed, this many pixels on and then off.
+const DASH = [4, 3];
+const DASH_LENGTH = DASH[0] + DASH[1];
+
 // How much of a half row a trace two spreads high fills at normal size.
 const ROW_FILL = 0.55;
 
@@ -101,8 +105,14 @@ export function levelAt({ levels, block }, sample) {
 }
 
 // The window lengths worth offering, shortest first. The last is the whole file when it fits.
-export function windowChoices({ channels, duration }) {
-  const rate = channels.reduce((sum, { fs }) => sum + fs, 0);
+// A redraw draws only the rows near the view, so what counts is the rate of the fastest
+// channels that can be drawn at once.
+export function windowChoices({ channels, duration }, rows = channels.length) {
+  const rate = channels
+    .map(({ fs }) => fs)
+    .sort((a, b) => b - a)
+    .slice(0, rows)
+    .reduce((sum, fs) => sum + fs, 0);
   const fits = (seconds) => seconds * rate <= MAX_WINDOW_SAMPLES;
   const choices = WINDOW_CHOICES.filter(
     (seconds, index) => seconds < duration && (index === 0 || fits(seconds)),
@@ -163,10 +173,19 @@ function cursorMark(className) {
 }
 
 // Cuts text to a width. The app's fonts are monospace, so one character measures them all.
-function fitText(context, text, width) {
+function fitText(context, text, width, character) {
   if (context.measureText(text).width <= width) return text;
-  const room = Math.floor(width / context.measureText('0').width) - 1;
-  return room > 0 ? `${text.slice(0, room)}…` : '';
+  const room = Math.floor(width / character) - 1;
+  return `${text.slice(0, room)}…`;
+}
+
+// The last of each run of items that land in the same pixel column, which is the one that
+// shows when they are drawn in order.
+function lastInColumn(items, xOf) {
+  return items.filter((item, index) => {
+    const next = items[index + 1];
+    return next === undefined || Math.round(xOf(next)) !== Math.round(xOf(item));
+  });
 }
 
 export class TraceView {
@@ -190,6 +209,8 @@ export class TraceView {
     this.width = 0;
     this.frameHeight = 0;
     this.rowHeight = MIN_ROW;
+    this.canvasTop = 0;
+    this.canvasHeight = 0;
     this.gutter = 48;
     this.cursor = null;
     this.touchX = null;
@@ -198,17 +219,28 @@ export class TraceView {
 
     // The cursor is made of elements rather than drawn, so pointing at a trace redraws nothing.
     // The canvas is see-through, so the row's shading can sit behind the traces. The box a
-    // drag draws is made the same way, in front of them all.
+    // drag draws is made the same way, in front of them all. The canvas covers only the rows
+    // near the view, so a spacer gives the frame the height of them all to scroll through.
     this.rowMark = cursorMark('cursor-row');
     this.lineMark = cursorMark('cursor-line');
     this.boxMark = cursorMark('zoom-box');
+    this.space = document.createElement('div');
     canvas.before(this.rowMark);
-    canvas.after(this.lineMark, this.boxMark);
+    canvas.after(this.lineMark, this.boxMark, this.space);
 
+    const frame = canvas.parentElement;
     new ResizeObserver(() => {
-      const { clientWidth, clientHeight } = canvas.parentElement;
-      if (clientWidth !== this.width || clientHeight !== this.frameHeight) this.resize();
-    }).observe(canvas.parentElement);
+      if (frame.clientWidth !== this.width || frame.clientHeight !== this.frameHeight) {
+        this.resize();
+      }
+    }).observe(frame);
+    frame.addEventListener(
+      'scroll',
+      () => {
+        if (this.recording && this.placeCanvas()) this.schedule();
+      },
+      { passive: true },
+    );
     // A canvas keeps the colours it was drawn with, so it has to follow the theme by hand.
     new MutationObserver(() => this.schedule()).observe(document.documentElement, {
       attributeFilter: ['data-theme'],
@@ -240,9 +272,9 @@ export class TraceView {
     canvas.addEventListener('keydown', (event) => this.keydown(event));
   }
 
-  setRecording(recording) {
+  // colors are those of eventColors, which the caller may already have for its own list.
+  setRecording(recording, colors = eventColors(recording.annotations)) {
     this.recording = recording;
-    const colors = eventColors(recording.annotations);
     this.events = recording.annotations.map((event, index) => ({ ...event, color: colors[index] }));
     this.spreads = recording.channels.map((channel) => robustSpread(channel.data));
     this.baselines = recording.channels.map(({ data, fs }) => baseline(data, fs));
@@ -251,8 +283,14 @@ export class TraceView {
     this.cursor = null;
     this.onHover(null);
     this.endDrag();
+    this.measure();
     // Not a draw yet: the window it would show belongs to the last recording. setView draws.
     this.layout();
+  }
+
+  // How many rows a redraw can draw at most, with every channel in view.
+  rowsDrawn() {
+    return Math.min(this.rowCount, Math.ceil(this.canvasHeight / this.rowHeight) + 1);
   }
 
   // Rows are the run of channels on screen, as { first, count }, or null for all of them.
@@ -279,6 +317,7 @@ export class TraceView {
     if (cursor && (cursor.row < first || cursor.row >= first + count)) this.leave();
     this.layout();
     this.canvas.parentElement.scrollTop = Math.max(0, previous - first) * this.rowHeight;
+    this.placeCanvas();
   }
 
   secondsFor(pixels) {
@@ -304,17 +343,19 @@ export class TraceView {
     this.draw();
   }
 
-  layout() {
-    const { canvas, axis, context, axisContext } = this;
-    const { channels } = this.recording;
-    const frame = canvas.parentElement;
-    this.width = frame.clientWidth;
-    this.frameHeight = frame.clientHeight;
-    this.rowHeight = Math.max(MIN_ROW, Math.floor(this.frameHeight / this.rowCount));
-    this.fit(canvas, context, this.plotHeight());
-    this.fit(axis, axisContext, this.eventRow() + TICK_ROW);
+  // A canvas measures text in whatever font it has, so the labels are measured again once
+  // the real one arrives.
+  remeasure() {
+    if (!this.recording) return;
+    this.measure();
+    this.resize();
+  }
 
-    // Wide enough at any trace size, so the plot does not shift when the size changes.
+  // The gutter holds the row labels. It is wide enough at any trace size, so the plot does
+  // not shift when the size changes, and it depends only on the recording and the font.
+  measure() {
+    const { context } = this;
+    const { channels } = this.recording;
     context.font = this.font(LABEL_SIZE);
     const labels = channels.map(({ label }) => context.measureText(label).width);
     context.font = this.font(RANGE_SIZE);
@@ -322,7 +363,37 @@ export class TraceView {
       GAIN_LIMITS.map((gain) => context.measureText(this.rangeText(row, gain)).width),
     );
     this.gutter = Math.ceil(Math.max(...labels, ...ranges)) + 20;
+  }
+
+  // The canvas covers the rows in view and as much again around them, so it stays the same
+  // size however many channels there are.
+  layout() {
+    const { canvas, axis, context, axisContext } = this;
+    const frame = canvas.parentElement;
+    this.width = frame.clientWidth;
+    this.frameHeight = frame.clientHeight;
+    this.rowHeight = Math.max(MIN_ROW, Math.floor(this.frameHeight / this.rowCount));
+    this.canvasHeight = Math.min(this.plotHeight(), 2 * this.frameHeight);
+    this.space.style.height = `${this.plotHeight()}px`;
+    this.fit(canvas, context, this.canvasHeight);
+    this.fit(axis, axisContext, this.eventRow() + TICK_ROW);
+    this.placeCanvas(true);
     this.showCursor();
+  }
+
+  // Moves the canvas once scrolling reaches its edge, to leave as much room either side of
+  // the view as it can, so that most scrolling needs no redraw. Says whether it moved.
+  placeCanvas(always = false) {
+    const { scrollTop } = this.canvas.parentElement;
+    const top = this.canvasTop;
+    const shown = Math.min(this.frameHeight, this.canvasHeight);
+    const covered = scrollTop >= top && scrollTop + shown <= top + this.canvasHeight;
+    if (covered && !always) return false;
+    const spare = this.canvasHeight - shown;
+    const latest = this.plotHeight() - this.canvasHeight;
+    this.canvasTop = clamp(Math.round(scrollTop - spare / 2), 0, latest);
+    this.canvas.style.top = `${this.canvasTop}px`;
+    return this.canvasTop !== top;
   }
 
   font(size) {
@@ -346,16 +417,17 @@ export class TraceView {
     return this.rowHeight * this.rowCount;
   }
 
-  // The channels on screen, each with its index in the recording and the middle of its row.
-  rows() {
+  // The channels with any part from top to bottom of the plot, each with its index in the
+  // recording and the middle of its row.
+  rows(top, bottom) {
     const { firstRow, rowHeight } = this;
-    return this.recording.channels
-      .slice(firstRow, firstRow + this.rowCount)
-      .map((channel, slot) => ({
-        channel,
-        row: firstRow + slot,
-        middle: (slot + 0.5) * rowHeight,
-      }));
+    const from = Math.max(0, Math.floor(top / rowHeight));
+    const to = Math.min(this.rowCount, Math.ceil(bottom / rowHeight));
+    return this.recording.channels.slice(firstRow + from, firstRow + to).map((channel, index) => ({
+      channel,
+      row: firstRow + from + index,
+      middle: (from + index + 0.5) * rowHeight,
+    }));
   }
 
   xOf(time) {
@@ -381,11 +453,16 @@ export class TraceView {
     this.touchX = event.clientX;
   }
 
+  // How far down the plot a point on the screen is. The canvas starts canvasTop down it.
+  plotY(clientY, box) {
+    return clientY - box.top + this.canvasTop;
+  }
+
   hover(event) {
     if (!this.recording) return;
     const box = this.canvas.getBoundingClientRect();
     const x = event.clientX - box.left - this.gutter;
-    const slot = Math.floor((event.clientY - box.top) / this.rowHeight);
+    const slot = Math.floor(this.plotY(event.clientY, box) / this.rowHeight);
     if (x < 0 || x > this.plotWidth() || slot < 0 || slot >= this.rowCount) {
       this.leave();
       return;
@@ -398,7 +475,7 @@ export class TraceView {
     const box = this.canvas.getBoundingClientRect();
     return {
       x: clamp(clientX - box.left - this.gutter, 0, this.plotWidth()),
-      y: clamp(clientY - box.top, 0, this.plotHeight() - 1),
+      y: clamp(this.plotY(clientY, box), 0, this.plotHeight() - 1),
     };
   }
 
@@ -408,7 +485,7 @@ export class TraceView {
     const point = this.pointAt(event);
     this.drag = { from: point, to: point };
     // Keeps the drag going when it leaves the canvas.
-    if (this.canvas.setPointerCapture) this.canvas.setPointerCapture(event.pointerId);
+    this.canvas.setPointerCapture(event.pointerId);
   }
 
   stretch(event) {
@@ -555,20 +632,24 @@ export class TraceView {
     return this.events.filter(({ time, duration }) => time <= end && time + duration >= this.start);
   }
 
+  // Draws the rows the canvas covers, in the plot's own coordinates: the canvas starts top
+  // pixels down the plot, and the context is moved up to match.
   draw() {
-    const { context, recording, gutter } = this;
+    const { context, recording, gutter, canvasTop: top, canvasHeight: height } = this;
     if (!recording) return;
     const styles = getComputedStyle(document.documentElement);
     // Kept for the frame, since a window can hold thousands of annotations in a few colours.
     const colors = {};
     const color = (name) => (colors[name] ??= styles.getPropertyValue(name).trim());
-    const plotHeight = this.plotHeight();
+    const bottom = top + height;
     const plotWidth = this.plotWidth();
     const ticks = this.ticks();
     const events = this.visibleEvents();
-    const rows = this.rows();
+    const rows = this.rows(top, bottom);
 
-    context.clearRect(0, 0, this.width, plotHeight);
+    context.clearRect(0, 0, this.width, height);
+    context.save();
+    context.translate(0, -top);
     context.textBaseline = 'middle';
 
     // Time grid.
@@ -576,16 +657,16 @@ export class TraceView {
     context.lineWidth = 1;
     context.beginPath();
     for (const { x } of ticks) {
-      context.moveTo(x, 0);
-      context.lineTo(x, plotHeight);
+      context.moveTo(x, top);
+      context.lineTo(x, bottom);
     }
     context.stroke();
 
     context.save();
     context.beginPath();
-    context.rect(gutter, 0, plotWidth, plotHeight);
+    context.rect(gutter, top, plotWidth, height);
     context.clip();
-    this.drawEvents(events, plotHeight, color);
+    this.drawEvents(events, top, bottom, color);
     context.strokeStyle = color('--trace');
     context.lineWidth = 1;
     context.lineJoin = 'round';
@@ -603,27 +684,34 @@ export class TraceView {
       context.font = rangeFont;
       context.fillText(this.rangeText(row, this.gain), gutter - 10, middle + 7);
     });
+    context.restore();
 
     this.drawAxis(ticks, events, color);
   }
 
   // A marker at each annotation in its colour, with a shaded span when it lasts a while.
-  drawEvents(events, plotHeight, color) {
+  // Markers in one pixel column cover each other, so only the one on top is drawn, which
+  // keeps a window of thousands of annotations quick to draw. The dashes start from the top
+  // of the plot, so they don't shift when the canvas moves.
+  drawEvents(events, top, bottom, color) {
     const { context } = this;
-    context.lineWidth = 1;
-    context.setLineDash([4, 3]);
+    context.globalAlpha = 0.12;
     for (const { time, duration, color: name } of events) {
-      context.strokeStyle = color(name);
-      context.fillStyle = color(name);
+      if (!(duration > 0)) continue;
       const x = Math.round(this.xOf(time)) + 0.5;
-      if (duration > 0) {
-        context.globalAlpha = 0.12;
-        context.fillRect(x, 0, this.xOf(time + duration) - x, plotHeight);
-        context.globalAlpha = 1;
-      }
+      context.fillStyle = color(name);
+      context.fillRect(x, top, this.xOf(time + duration) - x, bottom - top);
+    }
+    context.globalAlpha = 1;
+    context.lineWidth = 1;
+    context.setLineDash(DASH);
+    const from = top - (top % DASH_LENGTH);
+    for (const { time, color: name } of lastInColumn(events, ({ time }) => this.xOf(time))) {
+      const x = Math.round(this.xOf(time)) + 0.5;
+      context.strokeStyle = color(name);
       context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, plotHeight);
+      context.moveTo(x, from);
+      context.lineTo(x, bottom);
       context.stroke();
     }
     context.setLineDash([]);
@@ -643,17 +731,23 @@ export class TraceView {
     }
 
     // Annotation names sit here so that they stay in view too. Each follows a mark in its
-    // colour under the marker's line, and is written in ink, which reads on any colour.
+    // colour under the marker's line, and is written in ink, which reads on any colour. Like
+    // the markers, only the last mark in a pixel column is drawn, and a name with no room for
+    // a letter is left out.
     const right = gutter + this.plotWidth();
+    const character = context.measureText('0').width;
+    const placeOf = ({ time }) => Math.max(gutter, this.xOf(time));
+    const marked = lastInColumn(events, placeOf);
     context.textAlign = 'left';
-    events.forEach(({ time, text, color: name }, index) => {
-      const x = Math.max(gutter, this.xOf(time));
-      const next = index + 1 < events.length ? this.xOf(events[index + 1].time) : right;
-      context.fillStyle = color(name);
+    marked.forEach((event, index) => {
+      const x = placeOf(event);
+      const next = index + 1 < marked.length ? placeOf(marked[index + 1]) : right;
+      context.fillStyle = color(event.color);
       context.fillRect(Math.round(x) - 1, 0, 3, EVENT_ROW - 3);
-      context.fillStyle = color('--ink');
       const room = Math.min(next, right) - x - 12;
-      context.fillText(fitText(context, text, room), x + 6, EVENT_ROW / 2);
+      if (room < 2 * character) return;
+      context.fillStyle = color('--ink');
+      context.fillText(fitText(context, event.text, room, character), x + 6, EVENT_ROW / 2);
     });
   }
 

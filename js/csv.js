@@ -3,7 +3,7 @@
 // raw.to_data_frame(). A column named for time gives the sample rate, the other columns of
 // numbers become channels, and a column that is mostly empty holds the events.
 
-import { NO_SUBJECT } from './edf.js';
+import { MAX_SAMPLE_RATE, MAX_SECONDS, NO_INFO } from './recording.js';
 
 export class CsvError extends Error {}
 
@@ -16,10 +16,6 @@ const DEVICE_RATES = [
 ];
 const CLOSE_ENOUGH = 0.005;
 
-// Anything past these is a misread time column rather than a recording.
-const MAX_SAMPLE_RATE = 1e6;
-const MAX_SECONDS = 1e9;
-
 // A step this much longer or shorter than the usual one is a break in the recording.
 const STEP_TOLERANCE = 0.5;
 
@@ -31,12 +27,14 @@ const TIME_NAME = /^(?:lsl)?time(?:stamps?)?(s|secs?|seconds|ms|msecs?|millis|mi
 // Row numbers, which pandas and some recorders write. They say nothing about the signal.
 const INDEX_NAMES = new Set(['', 'index', 'unnamed0', 'sample', 'samples', 'sampleindex']);
 
-// A unit of voltage at the end of a name, as in "Fz [uV]" or "Fz (µV)".
-const VOLTS = /^(.*?)\s*[[(]\s*([nuµμm]?V)\s*[\])]$/;
+// A unit of voltage at the end of a name, as in "Fz [uV]" or "Fz (µV)". The patterns here
+// leave spaces to trim(), since a pattern with spaces either side of a part can take time
+// that grows with the square of a long run of them.
+const VOLTS = /[[(]\s*([nuµμm]?V)\s*[\])]$/;
 
-// Cells that hold no value. pandas writes a missing value as an empty cell, and others
-// write NaN or null.
-const EMPTY = /^\s*(?:nan|null|none|n\/a|na)?\s*$/i;
+// Cells that hold no value, once trimmed. pandas writes a missing value as an empty cell, and
+// others write NaN or null.
+const EMPTY = /^(?:nan|null|none|n\/a|na)?$/i;
 
 const normalName = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -91,6 +89,7 @@ function readColumns(body, names, delimiter, timeIndex) {
   const decimalComma = delimiter !== ',';
   const columns = names.map((name, index) => ({
     name,
+    index,
     values: index === timeIndex ? new Float64Array(rows) : new Float32Array(rows),
     numbers: 0,
     words: [],
@@ -104,8 +103,9 @@ function readColumns(body, names, delimiter, timeIndex) {
       column.values[row] = value;
       if (Number.isFinite(value)) {
         column.numbers += 1;
-      } else if (!EMPTY.test(cell) && column.words.length <= rows / 2) {
-        column.words.push({ row, text: cell.trim() });
+      } else if (column.words.length <= rows / 2) {
+        const text = cell.trim();
+        if (!EMPTY.test(text)) column.words.push({ row, text });
       }
     }
   }
@@ -140,20 +140,23 @@ function fillGaps(values) {
 }
 
 function labelOf(name, index) {
-  const [, label = name, unit = ''] = VOLTS.exec(name) ?? [];
-  return { label: label || `Channel ${index + 1}`, unit: unit.replace(/^[µμ]/, 'u') };
+  const volts = VOLTS.exec(name);
+  const label = volts ? name.slice(0, volts.index).trimEnd() : name;
+  const unit = volts ? volts[1].replace(/^[µμ]/, 'u') : '';
+  return { label: label || `Channel ${index + 1}`, unit };
 }
 
-// Events are numbered codes or words. With more than one column of them, each says which
-// column it came from.
-function eventsOf(columns, fs) {
+// Events are numbered codes or words. A code is taken as the file writes it, since its value
+// was kept in single precision, where 0.1 is 0.10000000149011612. With more than one column
+// of events, each says which column it came from.
+function eventsOf(columns, fs, cellAt) {
   const named = columns.length > 1;
   const events = [];
-  for (const { name, values, words } of columns) {
+  for (const { name, index, values, words } of columns) {
     const text = (value) => (named ? `${name}: ${value}` : value);
     values.forEach((value, row) => {
       if (Number.isFinite(value)) {
-        events.push({ time: row / fs, duration: 0, text: text(String(value)) });
+        events.push({ time: row / fs, duration: 0, text: text(cellAt(row, index)) });
       }
     });
     for (const word of words) {
@@ -221,20 +224,9 @@ export function parseCsv(buffer) {
       if (column.numbers < rows) fillGaps(column.values);
       return { ...labelOf(column.name, index), fs, data: column.values };
     }),
-    annotations: eventsOf(events, fs),
+    annotations: eventsOf(events, fs, (row, index) => cellsOf(body[row], delimiter)[index].trim()),
     warnings,
-    info: {
-      date: null,
-      time: null,
-      subject: NO_SUBJECT,
-      project: null,
-      experimenter: null,
-      device: null,
-      // A CSV says nothing about filtering.
-      highpass: null,
-      lowpass: null,
-      notch: null,
-      firstTime: times[0] * scale,
-    },
+    // A CSV says nothing about the participant or filtering.
+    info: { ...NO_INFO, firstTime: times[0] * scale },
   };
 }

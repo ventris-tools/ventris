@@ -17,7 +17,6 @@ import {
 const PREFERRED_WINDOW = 10;
 const GAIN_STEP = 1.4;
 const DEMO_NAME = 'Demo (synthetic data)';
-const CHOOSE = 'Choose an EDF or CSV file';
 
 // EDF files turn up under many names, so only a name that says text picks the CSV reader.
 const TEXT_FILE = /\.(?:csv|tsv|txt)$/i;
@@ -27,6 +26,9 @@ const LINK_MARK = '#url=';
 
 // A file that takes longer than this to read shows the dialog, so a drop gets a response.
 const PROGRESS_DELAY = 150;
+
+// A file at least this large, in bytes, takes long enough to open that the dialog says so first.
+const PAINT_FIRST = 16e6;
 
 // How long measuring bands can hold the page before it lets a frame through, in milliseconds.
 const BAND_SLICE = 10;
@@ -45,6 +47,8 @@ const loader = $('loader');
 const closeButton = $('close-loader');
 const chooseButton = $('choose-file');
 const chooseLabel = $('choose-label');
+// What the file button says when it isn't busy, in the page's own words.
+const CHOOSE = chooseLabel.textContent;
 const demoButton = $('show-demo');
 const demoOffer = $('demo-offer');
 const fileInput = $('file-input');
@@ -69,6 +73,9 @@ const bandBody = $('band-rows');
 const bandNote = $('band-note');
 const annotationSection = $('annotations');
 const annotationList = $('annotation-list');
+const timeSection = $('time-domain');
+const timeList = $('time-rows');
+const timeNote = $('time-note');
 
 // The window is the length chosen in the list, and length is how much is on screen, which a
 // zoom shortens. Rows are the channels a zoom keeps, or null for all of them. A zoom keeps
@@ -84,8 +91,14 @@ const state = {
 };
 let bandTimer = 0;
 let bandRun = 0;
+// What the band shares were last measured over, so that a change of trace size or of the
+// rows in view measures nothing again.
+let measured = {};
+// The recording whose time figures are shown, if any.
+let timed = null;
 let progressTimer = 0;
 let openRequest = 0;
+let opening = false;
 let downloading = null;
 
 function showHover(hit, announce = false) {
@@ -173,10 +186,21 @@ function showDetails(recording) {
   fillRows($('info-channels'), channels);
   fillRows($('info-filters'), filters);
   $('channel-names').textContent = recording.channels.map(({ label }) => label).join(', ');
+  timed = null;
+  fillRows(timeList, []);
+  timeNote.textContent = '';
+  showTimes();
+}
 
+// The time figures read every sample in the file, which holds the page for a long recording,
+// and their section starts closed, so they wait until it's open.
+function showTimes() {
+  const { recording } = state;
+  if (!timeSection.open || timed === recording) return;
+  timed = recording;
   const stats = timeStats(recording.channels);
-  fillRows($('time-rows'), stats ? timeRows(stats) : []);
-  $('time-note').textContent = stats
+  fillRows(timeList, stats ? timeRows(stats) : []);
+  timeNote.textContent = stats
     ? `Whole file · ${count(stats.channels, 'EEG channel')}`
     : BAND_PROBLEMS['no-eeg'];
 }
@@ -196,11 +220,10 @@ function annotationButton({ time, text }, color) {
   return item;
 }
 
-function showAnnotations({ annotations }) {
+function showAnnotations({ annotations }, colors) {
   annotationSection.hidden = annotations.length === 0;
   // One at a time, because a recording can hold more of them than a call can take arguments.
   const items = document.createDocumentFragment();
-  const colors = eventColors(annotations);
   annotations.forEach((annotation, index) => {
     items.append(annotationButton(annotation, colors[index]));
   });
@@ -263,6 +286,11 @@ function refresh() {
   );
   showZoom();
   view.setView(start, length, gain, rows);
+  // Bands depend only on the recording and the stretch of it on screen.
+  if (measured.recording === recording && measured.start === start && measured.length === length) {
+    return;
+  }
+  measured = { recording, start, length };
   clearTimeout(bandTimer);
   bandRun += 1;
   bandTimer = setTimeout(updateBands, 60);
@@ -314,18 +342,20 @@ function show(recording, name, start = 0) {
   updateGainButtons();
   nameHeading.textContent = name;
   showDetails(recording);
-  showAnnotations(recording);
+  const colors = eventColors(recording.annotations);
+  showAnnotations(recording, colors);
   noteLine.textContent = recording.warnings.join(' ');
   noteLine.hidden = recording.warnings.length === 0;
+  view.setRecording(recording, colors);
 
-  const choices = windowChoices(recording);
+  // The longest windows depend on how many rows fit on screen, as measured now.
+  const choices = windowChoices(recording, view.rowsDrawn());
   windowSelect.replaceChildren(
     ...choices.map(
       (seconds) => new Option(formatWindow(seconds, recording.duration), String(seconds)),
     ),
   );
   const preferred = choices.findLast((seconds) => seconds <= PREFERRED_WINDOW) ?? choices[0];
-  view.setRecording(recording);
   setWindow(preferred);
 }
 
@@ -344,19 +374,43 @@ function openLoader() {
 
 function stopReading() {
   clearTimeout(progressTimer);
+  opening = false;
+  downloading = null;
   chooseButton.disabled = false;
   chooseLabel.textContent = CHOOSE;
   linkButton.disabled = false;
   linkStatus.hidden = true;
 }
 
-// Each new recording to open stops the download of the one before.
+// Each new recording to open stops the one before, and its download if it has one.
 function beginOpening() {
   openRequest += 1;
+  clearTimeout(progressTimer);
   downloading?.abort();
   downloading = null;
   setError('');
   return openRequest;
+}
+
+function opened(recording, name, link) {
+  stopReading();
+  show(recording, name);
+  setAddress(link);
+  loader.close();
+}
+
+function failed(message) {
+  stopReading();
+  openLoader();
+  setError(message);
+}
+
+// Reading a large file holds the page, so the dialog says so and gets a frame to show it.
+async function paintFirst(buffer, status) {
+  if (buffer.byteLength < PAINT_FIRST) return;
+  openLoader();
+  status.textContent = 'Opening…';
+  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
 function linkInAddress() {
@@ -381,43 +435,41 @@ function setAddress(link) {
 // Reading can take a while, so whatever was opened last is what stays on screen.
 async function openFile(file) {
   const request = beginOpening();
+  opening = true;
   chooseButton.disabled = true;
   chooseLabel.textContent = 'Reading…';
-  clearTimeout(progressTimer);
   progressTimer = setTimeout(openLoader, PROGRESS_DELAY);
   try {
     const buffer = await file.arrayBuffer();
     if (request !== openRequest) return;
+    await paintFirst(buffer, chooseLabel);
+    if (request !== openRequest) return;
     const parse = TEXT_FILE.test(file.name) ? parseCsv : parseEdf;
-    show(parse(buffer), file.name);
-    setAddress('');
-    loader.close();
+    opened(parse(buffer), file.name, '');
   } catch (error) {
     if (request !== openRequest) return;
-    openLoader();
-    setError(
+    failed(
       error instanceof EdfError || error instanceof CsvError
         ? error.message
         : `${file.name} could not be opened. It may be too large for this browser.`,
     );
-  } finally {
-    if (request === openRequest) stopReading();
   }
 }
 
 // A download takes longer than reading a file, so the dialog stays open to show its progress.
+// A link that can't be opened still stops the download before it, as any new one does.
 async function openLink(text) {
+  const request = beginOpening();
   let target;
   try {
     target = resolveLink(text);
   } catch (error) {
-    openLoader();
-    setError(error.message);
+    failed(error.message);
     return;
   }
-  const request = beginOpening();
   const controller = new AbortController();
   downloading = controller;
+  opening = true;
   linkInput.value = target.link;
   linkButton.disabled = true;
   linkStatus.textContent = 'Downloading…';
@@ -431,21 +483,16 @@ async function openLink(text) {
       },
     });
     if (request !== openRequest) return;
-    show(parseEdf(buffer), target.name);
-    setAddress(target.link);
-    loader.close();
+    await paintFirst(buffer, linkStatus);
+    if (request !== openRequest) return;
+    opened(parseEdf(buffer), target.name, target.link);
   } catch (error) {
     if (request !== openRequest) return;
-    setError(
+    failed(
       error instanceof LinkError || error instanceof EdfError
         ? error.message
         : `${target.name} could not be opened. It may be too large for this browser.`,
     );
-  } finally {
-    if (request === openRequest) {
-      downloading = null;
-      stopReading();
-    }
   }
 }
 
@@ -454,6 +501,12 @@ openButton.addEventListener('click', () => {
   openLoader();
 });
 closeButton.addEventListener('click', () => loader.close());
+// Closing the dialog, with its button or Escape, gives up on whatever it was opening.
+loader.addEventListener('close', () => {
+  if (!opening) return;
+  beginOpening();
+  stopReading();
+});
 chooseButton.addEventListener('click', () => fileInput.click());
 demoButton.addEventListener('click', () => {
   beginOpening();
@@ -482,6 +535,7 @@ position.addEventListener('input', () => {
 });
 windowSelect.addEventListener('change', () => setWindow(Number(windowSelect.value)));
 resetButton.addEventListener('click', resetZoom);
+timeSection.addEventListener('toggle', showTimes);
 canvas.addEventListener('dblclick', resetZoom);
 
 // Page keys follow the slider convention, where Page Up means later. The canvas keeps the
@@ -555,5 +609,6 @@ showDemo();
 const startingLink = linkInAddress();
 if (startingLink) openLink(startingLink);
 
-// A canvas keeps whatever font it was drawn with, so redraw once the real one arrives.
-document.fonts.ready.then(() => view.resize());
+// A canvas measures and draws in whatever font it has, so measure and redraw once the real
+// one arrives.
+document.fonts.ready.then(() => view.remeasure());

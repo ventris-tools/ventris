@@ -117,13 +117,94 @@ test('downloads a recording, checks it against its pointer and reports progress'
   }
 });
 
-test('checks only the size when the pointer has no SHA-256 hash', async (t) => {
+const hashOf = (algorithm, bytes) => createHash(algorithm).update(bytes).digest('hex');
+
+test('checks the hash of every backend that has one, MD5 and the SHA family alike', async (t) => {
+  const bytes = bytesOf(3000);
+  const backends = { MD5E: 'md5', MD5: 'md5', SHA1E: 'sha1', SHA384E: 'sha384', SHA512: 'sha512' };
+  for (const [backend, algorithm] of Object.entries(backends)) {
+    const pointer = pointerFor(bytes, backend, hashOf(algorithm, bytes));
+    const chunks = [bytes.slice(0, 1000), bytes.slice(1000, 1001), bytes.slice(1001)];
+    fakeFetch(t, {
+      [target.pointerUrl]: new Response(pointer),
+      [target.dataUrl]: streamed(chunks),
+    });
+    assert.deepEqual(new Uint8Array(await download(target)), bytes, backend);
+
+    const wrong = pointerFor(bytes, backend, hashOf(algorithm, bytesOf(10)));
+    fakeFetch(t, {
+      [target.pointerUrl]: new Response(wrong),
+      [target.dataUrl]: streamed(chunks),
+    });
+    await assert.rejects(download(target), /doesn't match the version the link is to/, backend);
+  }
+});
+
+test('checks only the size when the backend has no hash it can check', async (t) => {
   const bytes = bytesOf(300);
+  for (const pointer of [
+    `/annex/objects/WORM-s300-m1700000000--sub-01_eeg.edf\n`,
+    `/annex/objects/SHA3_256E-s300--${'0'.repeat(64)}.edf\n`,
+  ]) {
+    fakeFetch(t, {
+      [target.pointerUrl]: new Response(pointer),
+      [target.dataUrl]: streamed([bytes]),
+    });
+    assert.deepEqual(new Uint8Array(await download(target)), bytes, pointer);
+  }
+});
+
+test('stops reading a copy the moment it runs past the size in the pointer', async (t) => {
+  const bytes = bytesOf(400);
+  let pulls = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(bytes.slice(0, 300));
+    },
+  });
   fakeFetch(t, {
-    [target.pointerUrl]: new Response(`/annex/objects/${'MD5E'}-s300--${'0'.repeat(32)}.edf\n`),
+    [target.pointerUrl]: new Response(pointerFor(bytesOf(400))),
+    [target.dataUrl]: new Response(body),
+  });
+  await assert.rejects(download(target), /doesn't match the version the link is to/);
+  assert.ok(pulls <= 3, `read ${pulls} chunks`);
+});
+
+test('downloads no more than the limit, whatever the pointer or the server says', async (t) => {
+  const bytes = bytesOf(2000);
+  const message = /larger than 0\.000001 GB, the most Ventris downloads by link/;
+  const calls = fakeFetch(t, {
+    [target.pointerUrl]: new Response(pointerFor(bytes)),
     [target.dataUrl]: streamed([bytes]),
   });
-  assert.deepEqual(new Uint8Array(await download(target)), bytes);
+  await assert.rejects(download(target, { most: 1000 }), message);
+  assert.equal(calls.mock.callCount(), 1);
+
+  const direct = { ...target, pointerUrl: null };
+  fakeFetch(t, { [target.dataUrl]: streamed([bytes], { 'content-length': '2000' }) });
+  await assert.rejects(download(direct, { most: 1000 }), message);
+  fakeFetch(t, { [target.dataUrl]: streamed([bytes.slice(0, 600), bytes.slice(600)]) });
+  await assert.rejects(download(direct, { most: 1000 }), message);
+  fakeFetch(t, { [target.dataUrl]: streamed([bytes.slice(0, 600), bytes.slice(600, 1000)]) });
+  assert.equal((await download(direct, { most: 1000 })).byteLength, 1000);
+});
+
+test('says when the connection drops part way, and lets a stop end as an abort', async (t) => {
+  const failing = (error) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytesOf(100));
+          controller.error(error);
+        },
+      }),
+    );
+  const direct = { ...target, pointerUrl: null };
+  fakeFetch(t, { [target.dataUrl]: () => failing(new TypeError('network error')) });
+  await assert.rejects(download(direct), /stopped part way\. Check your connection/);
+  fakeFetch(t, { [target.dataUrl]: () => failing(new DOMException('Stopped.', 'AbortError')) });
+  await assert.rejects(download(direct), { name: 'AbortError' });
 });
 
 test('refuses a copy that differs from the version the link is to', async (t) => {

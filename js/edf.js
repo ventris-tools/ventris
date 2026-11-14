@@ -7,27 +7,13 @@
 // (mne/io/edf/edf.py), under the BSD 3-Clause license. See licenses/MNE-Python.txt.
 
 import { twoDigits } from './format.js';
+import { MAX_SAMPLE_RATE, MAX_SECONDS, NO_SUBJECT } from './recording.js';
 
 export class EdfError extends Error {}
-
-// A recording that says nothing about its participant.
-export const NO_SUBJECT = {
-  id: null,
-  name: null,
-  sex: null,
-  birthday: null,
-  hand: null,
-  height: null,
-  weight: null,
-};
 
 const HEADER_BYTES = 256;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const ANNOTATION_LABEL = 'EDF Annotations';
-
-// Anything past these is a damaged header rather than a recording.
-const MAX_SAMPLE_RATE = 1e6;
-const MAX_SECONDS = 1e9;
 
 const decoder = new TextDecoder('latin1');
 const annotationDecoder = new TextDecoder();

@@ -8,7 +8,7 @@ Follow [Run it locally](README.md#run-it-locally) in the README. The app has no 
 
 ## Test
 
-The development tools need Node.js 22.13 or later.
+The development tools need Node.js 22.22.2 or a later 22, 24.15 or a later 24, or 26 and up, as jsdom does.
 
 ```bash
 npm install
@@ -23,6 +23,10 @@ npm run coverage
 ```
 
 ```bash
+npm run test:browser
+```
+
+```bash
 npm run lint
 ```
 
@@ -32,10 +36,15 @@ npm run format:check
 
 `npm run coverage` fails if coverage falls below the floors in `package.json`. Raise the floors when coverage improves, so that it can't slip back.
 
+`npm test` runs the app in jsdom, which has no Content Security Policy, real canvas or form checks. `npm run test:browser` opens the pages in headless Chrome and fails on any error, blocked load or missing file. It finds Chrome in the usual places, or set `CHROME_PATH`, and skips without it except in CI.
+
+`npm run lint` checks the JavaScript with ESLint, the CSS with stylelint's recommended rules and the HTML with html-validate's. Stylelint's `no-descending-specificity` is off, since it flags selectors that never match the same element.
+
 ## Layout
 
 | File | Purpose |
 |---|---|
+| `js/recording.js` | Describes the recording every reader returns, and its shared limits |
 | `js/edf.js` | Reads EDF and EDF+ files |
 | `js/csv.js` | Reads EEG saved as CSV, with a header row and a column of times |
 | `js/channels.js` | Reads the kind of each channel from its label |
@@ -43,6 +52,7 @@ npm run format:check
 | `js/format.js` | Writes times and amounts for the interface |
 | `js/info.js` | Builds the rows of the details panel |
 | `js/remote.js` | Reads a link to a public recording on NEMAR or OpenNeuro, and downloads it |
+| `js/md5.js` | Hashes a download with MD5, which Web Crypto lacks, to check it against its pointer |
 | `js/demo.js` | Generates the synthetic demo recording |
 | `js/traces.js` | Draws the traces and the time axis, and handles the cursor |
 | `js/theme.js` | Sets the light or dark theme and remembers the choice in the browser |

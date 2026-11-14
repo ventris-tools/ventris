@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { demoRecording } from '../js/demo.js';
 import { timeStats } from '../js/dsp.js';
-import { NO_SUBJECT } from '../js/edf.js';
+import { NO_SUBJECT } from '../js/recording.js';
 import { infoGroups, timeRows } from '../js/info.js';
 
 function recording(

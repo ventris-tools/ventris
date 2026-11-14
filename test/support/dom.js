@@ -25,8 +25,15 @@ export function installDom({ width = 1000, height = 600, url = 'http://localhost
     MutationObserver: window.MutationObserver,
     getComputedStyle: window.getComputedStyle.bind(window),
     requestAnimationFrame: (callback) => setTimeout(callback, 0),
+    // Keeps the callback on the element it watches, so that a test can say it has resized.
     ResizeObserver: class {
-      observe() {}
+      constructor(callback) {
+        this.callback = callback;
+      }
+
+      observe(element) {
+        element.resized = this.callback;
+      }
     },
     matchMedia: () => ({ addEventListener() {} }),
   });
@@ -41,6 +48,7 @@ export function installDom({ width = 1000, height = 600, url = 'http://localhost
     this.open = false;
     this.dispatchEvent(new window.Event('close'));
   };
+  window.Element.prototype.setPointerCapture = function setPointerCapture() {};
   window.HTMLCanvasElement.prototype.getContext = function getContext() {
     this.fake ??= fakeContext();
     return this.fake;

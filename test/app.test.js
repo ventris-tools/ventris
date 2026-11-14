@@ -43,6 +43,12 @@ async function open(name, buffer = edf()) {
   await wait(0);
 }
 
+// The time figures wait for their section to open, which tells the page in a task of its own.
+async function openTimes() {
+  $('time-domain').open = true;
+  await wait(0);
+}
+
 const press = (target, key) =>
   target.dispatchEvent(
     new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
@@ -185,7 +191,38 @@ test('captions the bands and the time figures with what they cover', async () =>
   const caption = '1 to 30 Hz · 8 EEG channels';
   await until(() => $('band-note').textContent === caption);
   assert.equal($('band-note').textContent, caption);
+  await openTimes();
   assert.equal($('time-note').textContent, 'Whole file · 8 EEG channels');
+});
+
+test('works out the time figures only once their section is opened, once per recording', async (t) => {
+  $('time-domain').open = false;
+  await wait(0);
+  await open('closed.edf');
+  assert.equal($('time-rows').children.length, 0);
+  assert.equal($('time-note').textContent, '');
+  await openTimes();
+  assert.equal($('time-note').textContent, 'Whole file · 1 EEG channel');
+  const filled = t.mock.method($('time-rows'), 'replaceChildren');
+  $('time-domain').open = false;
+  await wait(0);
+  await openTimes();
+  assert.equal(filled.mock.callCount(), 0);
+  $('open-recording').click();
+  $('show-demo').click();
+});
+
+test('a change of trace size measures no bands again, and a move does', async (t) => {
+  await wait(80);
+  const shown = t.mock.method(document.querySelector('.bar').style, 'setProperty');
+  $('gain-up').click();
+  $('gain-down').click();
+  await wait(80);
+  assert.equal(shown.mock.callCount(), 0);
+  press($('position'), 'PageUp');
+  await until(() => shown.mock.callCount() > 0);
+  assert.ok(shown.mock.callCount() > 0);
+  press($('position'), 'Home');
 });
 
 test('keeps a warning about the file in view', async () => {
@@ -368,6 +405,7 @@ test('gives the real reason when bands cannot be measured', async () => {
   await open('belts.edf', buildEdf([{ label: 'Abdomen', samples: 256 }], { records: 10 }));
   await wait(80);
   assert.equal($('band-note').textContent, 'This recording has no EEG channels to measure.');
+  await openTimes();
   assert.equal($('time-note').textContent, 'This recording has no EEG channels to measure.');
 });
 
@@ -382,6 +420,7 @@ test('opens a CSV file, with its markers as annotations', async () => {
   assert.match($('info-acquisition').textContent, /CSV/);
   assert.match($('info-acquisition').textContent, /250 Hz/);
   assert.match($('info-filters').textContent, /Unknown/);
+  await openTimes();
   assert.equal($('time-note').textContent, 'Whole file · 8 EEG channels');
 });
 
@@ -506,6 +545,46 @@ test('a slow read opens the dialog so that a drop shows progress', async () => {
   await wait(0);
   assert.equal($('loader').open, false);
   assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+});
+
+test('a large file opens the dialog and says so before reading it holds the page', async () => {
+  const big = slowFile('big.edf', new Uint8Array(16e6).buffer);
+  drop(big);
+  big.release();
+  await wait(0);
+  assert.equal($('loader').open, true);
+  assert.equal($('choose-label').textContent, 'Opening…');
+  await until(() => !$('error').hidden);
+  assert.equal($('error').textContent, 'This does not look like an EDF file.');
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+  $('close-loader').click();
+});
+
+test('closing the dialog gives up on a file still being read', async () => {
+  const before = $('recording-name').textContent;
+  const slow = slowFile('abandoned.edf', edf());
+  drop(slow);
+  await wait(200);
+  assert.equal($('loader').open, true);
+  $('close-loader').click();
+  assert.equal($('choose-file').disabled, false);
+  assert.equal($('choose-label').textContent, 'Choose an EDF or CSV file');
+  slow.release();
+  await wait(0);
+  await wait(0);
+  assert.equal($('recording-name').textContent, before);
+});
+
+test('the file picker offers every file, since EDF files turn up under many names', () => {
+  assert.equal($('file-input').hasAttribute('accept'), false);
+});
+
+test('the link field takes an address written without https://', () => {
+  const input = $('link-input');
+  input.value = 'github.com/nemarDatasets/on003194/blob/main/sub-01/eeg/sub-01_eeg.edf';
+  assert.equal(input.checkValidity(), true);
+  input.value = '';
+  assert.equal(input.checkValidity(), false);
 });
 
 test('marks a drag over the page and clears it on drop', async () => {

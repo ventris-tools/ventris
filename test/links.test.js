@@ -48,6 +48,7 @@ function heldBody(bytes) {
           controller.enqueue(bytes.slice(0, half));
           signal.addEventListener('abort', () => controller.error(signal.reason));
           released.then(() => {
+            if (signal.aborted) return;
             controller.enqueue(bytes.slice(half));
             controller.close();
           });
@@ -149,15 +150,32 @@ test("says so when the download isn't an EDF file", async () => {
   $('close-loader').click();
 });
 
-test('says a recording may be too large when the browser cannot hold it', async () => {
+test('says when a recording is too large to download by link', async () => {
   const link = linkTo('sub-01_task-huge_eeg.edf');
   const bytes = serve(link);
   answers.set(resolveLink(link).pointerUrl, () => new Response(pointerFor(bytes, 2 ** 53)));
+  const before = requests.length;
   submit(link);
   await until(() => !$('error').hidden);
   assert.equal(
     $('error').textContent,
-    'sub-01_task-huge_eeg.edf could not be opened. It may be too large for this browser.',
+    'This recording is larger than 1 GB, the most Ventris downloads by link. Download it and open the file instead.',
+  );
+  assert.equal(requests.length, before + 1);
+  $('close-loader').click();
+});
+
+test('says a recording may be too large when the browser fails some other way', async (t) => {
+  const link = linkTo('sub-01_task-strange_eeg.edf');
+  serve(link);
+  t.mock.method(crypto.subtle, 'digest', () =>
+    Promise.reject(new RangeError('Array buffer allocation failed')),
+  );
+  submit(link);
+  await until(() => !$('error').hidden);
+  assert.equal(
+    $('error').textContent,
+    'sub-01_task-strange_eeg.edf could not be opened. It may be too large for this browser.',
   );
   $('close-loader').click();
 });
@@ -178,6 +196,43 @@ test('the demo stops a download under way and takes the link out of the address'
   assert.equal($('open-link').disabled, false);
   await wait(10);
   assert.equal($('error').hidden, true);
+});
+
+test('closing the dialog stops a download under way', async () => {
+  const before = { name: shown(), address: address() };
+  const link = linkTo('sub-01_task-closed_eeg.edf');
+  const held = heldBody(recording());
+  serve(link, recording(), held.body);
+  submit(link);
+  await until(() => $('link-status').textContent.includes(' of '));
+
+  $('close-loader').click();
+  assert.equal(requests.at(-1).signal.aborted, true);
+  assert.equal($('link-status').hidden, true);
+  assert.equal($('open-link').disabled, false);
+  held.release();
+  await wait(10);
+  assert.equal(shown(), before.name);
+  assert.equal(address(), before.address);
+  assert.equal($('loader').open, false);
+});
+
+test('a link that cannot be opened stops the download before it, and its error stays', async () => {
+  const before = shown();
+  const link = linkTo('sub-01_task-replaced_eeg.edf');
+  const held = heldBody(recording());
+  serve(link, recording(), held.body);
+  submit(link);
+  await until(() => $('link-status').textContent.includes(' of '));
+
+  submit('https://example.com/sub-01_eeg.edf');
+  assert.equal(requests.at(-1).signal.aborted, true);
+  held.release();
+  await wait(10);
+  assert.match($('error').textContent, /NEMAR datasets on GitHub, or to OpenNeuro/);
+  assert.equal($('error').hidden, false);
+  assert.equal(shown(), before);
+  $('close-loader').click();
 });
 
 test('a link that arrives late does not replace what was opened after it', async () => {

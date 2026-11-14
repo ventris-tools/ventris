@@ -107,6 +107,32 @@ test('reads a unit of voltage from the end of a name', () => {
   );
 });
 
+// The patterns that read these once took about 12 seconds over this file, and longer runs
+// take longer still, so a hostile file could hang the page.
+test('reads long runs of spaces in names and cells in time that grows with their length', () => {
+  const spaces = ' '.repeat(100000);
+  const started = performance.now();
+  const recording = parseCsv(
+    buildCsv(
+      ['time', `Fz${spaces}x`, `Cz${spaces}[uV]`, 'Note'],
+      timed(250, [
+        [1, 2, `${spaces}x`],
+        [1, 2, ''],
+        [1, 2, ''],
+      ]),
+    ),
+  );
+  assert.ok(performance.now() - started < 1000, `took ${performance.now() - started} ms`);
+  assert.deepEqual(
+    recording.channels.map(({ label, unit }) => [label.length, unit]),
+    [
+      [100003, ''],
+      [2, 'uV'],
+    ],
+  );
+  assert.deepEqual(recording.annotations, [{ time: 0, duration: 0, text: 'x' }]);
+});
+
 test('skips the row numbers that pandas and recorders write', () => {
   for (const name of ['', 'Unnamed: 0', 'index', 'Sample Index']) {
     const rows = [0, 1, 2].map((i) => [i, i / 250, 5]);
@@ -168,6 +194,22 @@ test('turns a mostly empty column of numbers into events', () => {
     { time: 0, duration: 0, text: '7' },
     { time: 0.03, duration: 0, text: '9' },
   ]);
+});
+
+test('keeps an event code as the file writes it, not as single precision rounds it', () => {
+  const rows = timed(100, [
+    [1, '0.1'],
+    [2, ''],
+    [3, ' 16777217 '],
+    [4, ''],
+    [5, '1.50'],
+    [6, ''],
+  ]);
+  const { annotations } = parseCsv(buildCsv(['time', 'Cz', 'Trigger'], rows));
+  assert.deepEqual(
+    annotations.map(({ text: label }) => label),
+    ['0.1', '16777217', '1.50'],
+  );
 });
 
 test('names the column of each event when there is more than one', () => {

@@ -755,3 +755,159 @@ test('a zoom drops a drag under way', () => {
   pointer(view, canvas, 'pointerup', [400, 320]);
   assert.deepEqual(zooms, []);
 });
+
+const manyRows = (count, fs = 256) => ({
+  channels: Array.from({ length: count }, (_, row) => ({
+    label: `C${row}`,
+    unit: 'uV',
+    fs,
+    data: Float32Array.from({ length: fs * 10 }, (_, i) => Math.sin(i / 7 + row)),
+  })),
+  duration: 10,
+});
+
+const rowLabels = (canvas) => drawn(canvas).filter((text) => /^C\d+$/.test(text));
+
+test('the canvas covers the rows in view and as much again, however many channels there are', () => {
+  const { view, canvas } = viewOf(manyRows(200));
+  view.setView(0, 10, 1);
+  // The frame is 600 pixels high and rows can't be shorter than 26.
+  assert.equal(view.rowHeight, 26);
+  assert.equal(canvas.style.height, '1200px');
+  assert.equal(canvas.height, 1200);
+  assert.equal(
+    canvas.nextElementSibling.nextElementSibling.nextElementSibling.style.height,
+    '5200px',
+  );
+  canvas.getContext('2d').calls.length = 0;
+  view.draw();
+  const labels = rowLabels(canvas);
+  assert.equal(labels[0], 'C0');
+  assert.equal(labels.at(-1), 'C46');
+});
+
+test('scrolling past the canvas moves it and draws the rows it now covers', async () => {
+  const { view, canvas, hits } = viewOf(manyRows(200));
+  view.setView(0, 10, 1);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const frame = canvas.parentElement;
+  const context = canvas.getContext('2d');
+
+  // Within the canvas, a scroll redraws nothing.
+  context.calls.length = 0;
+  frame.scrollTop = 500;
+  frame.dispatchEvent(new window.Event('scroll'));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(context.calls, []);
+  assert.equal(canvas.style.top, '0px');
+
+  frame.scrollTop = 3000;
+  frame.dispatchEvent(new window.Event('scroll'));
+  assert.equal(canvas.style.top, '2700px');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const labels = rowLabels(canvas);
+  assert.equal(labels[0], 'C103');
+  assert.equal(labels.at(-1), 'C149');
+  assert.ok(called(canvas, 'translate').some(({ args }) => args[1] === -2700));
+
+  // The pointer reads the row under it on the plot, not on the canvas.
+  canvas.dispatchEvent(new window.MouseEvent('pointermove', { clientX: 300, clientY: 50 }));
+  assert.equal(hits.at(-1).hit.channel.label, 'C105');
+});
+
+test('a box drawn on a canvas that has moved zooms to the rows under it', () => {
+  const { view, canvas, zooms } = viewOf(manyRows(200));
+  view.setView(0, 10, 1);
+  canvas.parentElement.scrollTop = 3000;
+  canvas.parentElement.dispatchEvent(new window.Event('scroll'));
+  drag(view, canvas, [100, 50], [104, 110]);
+  assert.deepEqual(zooms[0].rows, { first: 105, count: 4 });
+});
+
+test('a long recording with many channels offers windows by the rows drawn at once', () => {
+  const { view } = viewOf(manyRows(256, 1000));
+  assert.equal(view.rowsDrawn(), 48);
+  const recording = { channels: manyRows(256, 1000).channels, duration: 7200 };
+  assert.deepEqual(windowChoices(recording), [5, 10, 30, 60]);
+  assert.deepEqual(windowChoices(recording, view.rowsDrawn()), [5, 10, 30, 60, 300]);
+});
+
+test('draws one marker in each pixel column, the one that shows', () => {
+  const root = window.document.documentElement;
+  root.style.setProperty('--event-1', '#111111');
+  root.style.setProperty('--event-2', '#222222');
+  // Two kinds alternating, ten to a pixel.
+  const annotations = Array.from({ length: 20000 }, (_, i) => ({
+    time: i / 2000,
+    duration: 0,
+    text: i % 2 ? 'Odd' : 'Even',
+  }));
+  const { view, canvas, axis } = viewOf({ ...oneChannel(new Float32Array(2560)), annotations });
+  view.setView(0, 10, 1);
+  const lines = paints(canvas, 'strokeStyle');
+  canvas.getContext('2d').calls.length = 0;
+  axis.getContext('2d').calls.length = 0;
+  view.draw();
+  root.style.removeProperty('--event-1');
+  root.style.removeProperty('--event-2');
+
+  const markers = lines.filter(Boolean);
+  assert.ok(markers.length <= view.plotWidth() + 2, `${markers.length} markers`);
+  // Within each column the last annotation is odd, so its colour is the one drawn.
+  assert.ok(markers.every((value) => value === '#111111' || value === '#222222'));
+  assert.ok(called(axis, 'fillRect').length <= view.plotWidth() + 2);
+  // No name has room for a letter.
+  assert.ok(!drawn(axis).some((text) => /Odd|Even/.test(text)));
+});
+
+test('dashes stay put on the plot when the canvas moves', () => {
+  const annotations = [{ time: 5, duration: 0, text: 'Mark' }];
+  const { view, canvas } = viewOf({ ...manyRows(200), annotations });
+  view.setView(0, 10, 1);
+  canvas.parentElement.scrollTop = 3000;
+  canvas.parentElement.dispatchEvent(new window.Event('scroll'));
+  canvas.getContext('2d').calls.length = 0;
+  view.draw();
+  const dashed = called(canvas, 'moveTo').find(({ args }) => args[1] % 1 === 0 && args[1] < 2700);
+  assert.equal(dashed.args[1], 2700 - (2700 % 7));
+});
+
+test('measures the row labels once per recording and font, not at every resize', (t) => {
+  const { view, canvas } = viewOf(twoRows());
+  view.setView(0, 10, 1);
+  const measured = t.mock.method(canvas.getContext('2d'), 'measureText');
+  view.resize();
+  assert.equal(measured.mock.callCount(), 0);
+  view.remeasure();
+  assert.ok(measured.mock.callCount() > 0);
+
+  const empty = new TraceView(canvas, window.document.createElement('canvas'));
+  empty.remeasure();
+  assert.equal(empty.recording, null);
+});
+
+test('cuts a name short to the room before the next annotation', () => {
+  const annotations = [
+    { time: 1, duration: 0, text: 'Eyes closed' },
+    { time: 1.6, duration: 0, text: 'Blink' },
+  ];
+  const { view, axis } = viewOf({ ...oneChannel(new Float32Array(2560)), annotations });
+  view.setView(0, 10, 1);
+  axis.getContext('2d').calls.length = 0;
+  view.draw();
+  const name = drawn(axis).find((text) => text.startsWith('Eyes'));
+  assert.match(name, /^Eyes c?…$/);
+  assert.ok(drawn(axis).includes('Blink'));
+});
+
+test('lays the rows out again when the frame changes size, and only then', () => {
+  const { view, canvas } = viewOf(twoRows());
+  view.setView(0, 10, 1);
+  const frame = canvas.parentElement;
+  const before = view.rowHeight;
+  frame.resized();
+  assert.equal(view.rowHeight, before);
+  Object.defineProperty(frame, 'clientHeight', { value: 900 });
+  frame.resized();
+  assert.equal(view.rowHeight, 450);
+});
