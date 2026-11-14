@@ -85,6 +85,7 @@
 
     <aside class="panel panel-info" aria-label="Recording details">
       <div class="recording-title">
+        <!-- [html-validate-disable-next empty-heading -- js/app.js names the recording here] -->
         <h1 id="recording-name"></h1>
         <p class="note" id="recording-note" hidden></p>
       </div>
@@ -133,7 +134,7 @@
           <svg width="18" height="18" aria-hidden="true"><use href="#icon-help"/></svg>
           Help
         </a>
-        <button class="tool theme-toggle" type="button">
+        <button class="tool theme-toggle" type="button" aria-label="Switch between light and dark mode">
           <svg class="to-dark" width="18" height="18" aria-hidden="true"><use href="#icon-moon"/></svg>
           <svg class="to-light" width="18" height="18" aria-hidden="true"><use href="#icon-sun"/></svg>
         </button>

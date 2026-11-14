@@ -32,6 +32,8 @@ npm run format:check
 
 `npm run coverage` fails if coverage falls below the floors in `package.json`. Raise the floors when coverage improves, so that it can't slip back.
 
+`npm run lint` checks the JavaScript with ESLint, the CSS with stylelint's recommended rules and the HTML with html-validate's. Stylelint's `no-descending-specificity` is off, since it flags selectors that never match the same element.
+
 ## Layout
 
 | File | Purpose |
