@@ -150,15 +150,32 @@ test("says so when the download isn't an EDF file", async () => {
   $('close-loader').click();
 });
 
-test('says a recording may be too large when the browser cannot hold it', async () => {
+test('says when a recording is too large to download by link', async () => {
   const link = linkTo('sub-01_task-huge_eeg.edf');
   const bytes = serve(link);
   answers.set(resolveLink(link).pointerUrl, () => new Response(pointerFor(bytes, 2 ** 53)));
+  const before = requests.length;
   submit(link);
   await until(() => !$('error').hidden);
   assert.equal(
     $('error').textContent,
-    'sub-01_task-huge_eeg.edf could not be opened. It may be too large for this browser.',
+    'This recording is larger than 1 GB, the most Ventris downloads by link. Download it and open the file instead.',
+  );
+  assert.equal(requests.length, before + 1);
+  $('close-loader').click();
+});
+
+test('says a recording may be too large when the browser fails some other way', async (t) => {
+  const link = linkTo('sub-01_task-strange_eeg.edf');
+  serve(link);
+  t.mock.method(crypto.subtle, 'digest', () =>
+    Promise.reject(new RangeError('Array buffer allocation failed')),
+  );
+  submit(link);
+  await until(() => !$('error').hidden);
+  assert.equal(
+    $('error').textContent,
+    'sub-01_task-strange_eeg.edf could not be opened. It may be too large for this browser.',
   );
   $('close-loader').click();
 });

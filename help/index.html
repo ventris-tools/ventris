@@ -101,13 +101,14 @@
     <p>Ventris can open a recording from a <a href="https://nemar.org">NEMAR</a> dataset straight from GitHub. Find the file in a repository of the <a href="https://github.com/nemarDatasets">nemarDatasets</a> organization, copy its address, and paste it under Open a recording. The address looks like this:</p>
     <p class="example"><code>https://github.com/nemarDatasets/on003194/blob/main/sub-NEPO01/ses-Nepopre/eeg/sub-NEPO01_ses-Nepopre_task-taskprenepo_eeg.edf</code></p>
     <p>A link to the same file in OpenNeuro's public bucket, starting <code>https://s3.amazonaws.com/openneuro.org/</code>, works too.</p>
-    <p>GitHub keeps only a small pointer for each recording, so Ventris downloads the file from OpenNeuro's copy and checks it against the size and hash in the pointer. What you see is the version the link names.</p>
+    <p>GitHub keeps only a small pointer for each recording, so Ventris downloads the file from OpenNeuro's copy and checks it against the size and the MD5 or SHA hash in the pointer. What you see is the version the link names.</p>
     <p>Once it opens, the address bar links to the recording, so you can share the view or come back to it.</p>
     <table>
       <tbody>
         <tr><th scope="row">Datasets starting <code>on</code></th><td>NEMAR mirrors these from OpenNeuro, and they open.</td></tr>
         <tr><th scope="row">Datasets starting <code>nm</code></th><td>NEMAR's own datasets don't open yet. Their files are public, but their storage doesn't let a web page download them.</td></tr>
         <tr><th scope="row">File types</th><td>EDF only. Link to one recording, a file ending in <code>.edf</code>, not to a dataset or a folder.</td></tr>
+        <tr><th scope="row">Size</th><td>Up to 1 GB. Download a larger recording and open it as a file.</td></tr>
       </tbody>
     </table>
 

@@ -30,7 +30,7 @@ Paste the GitHub address of a recording in a [NEMAR](https://nemar.org) dataset 
 https://github.com/nemarDatasets/on003194/blob/main/sub-NEPO01/ses-Nepopre/eeg/sub-NEPO01_ses-Nepopre_task-taskprenepo_eeg.edf
 ```
 
-GitHub keeps only a small pointer for each file, so Ventris downloads the recording from OpenNeuro's public copy and checks it against the size and SHA-256 hash in the pointer. The address bar then links to the recording, so you can share the view.
+GitHub keeps only a small pointer for each file, so Ventris downloads the recording from OpenNeuro's public copy and checks it against the size and the MD5 or SHA hash in the pointer. The address bar then links to the recording, so you can share the view.
 
 This works for EDF files in the datasets NEMAR mirrors from OpenNeuro, whose names start with `on`. NEMAR's own datasets, starting `nm`, don't open yet, because their storage doesn't let a web page download them. The [help page](https://ventris-tools.github.io/ventris/help/#links) lists the links that work.
 

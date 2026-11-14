@@ -43,6 +43,7 @@ npm run format:check
 | `js/format.js` | Writes times and amounts for the interface |
 | `js/info.js` | Builds the rows of the details panel |
 | `js/remote.js` | Reads a link to a public recording on NEMAR or OpenNeuro, and downloads it |
+| `js/md5.js` | Hashes a download with MD5, which Web Crypto lacks, to check it against its pointer |
 | `js/demo.js` | Generates the synthetic demo recording |
 | `js/traces.js` | Draws the traces and the time axis, and handles the cursor |
 | `js/theme.js` | Sets the light or dark theme and remembers the choice in the browser |
