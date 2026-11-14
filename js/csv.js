@@ -31,12 +31,14 @@ const TIME_NAME = /^(?:lsl)?time(?:stamps?)?(s|secs?|seconds|ms|msecs?|millis|mi
 // Row numbers, which pandas and some recorders write. They say nothing about the signal.
 const INDEX_NAMES = new Set(['', 'index', 'unnamed0', 'sample', 'samples', 'sampleindex']);
 
-// A unit of voltage at the end of a name, as in "Fz [uV]" or "Fz (µV)".
-const VOLTS = /^(.*?)\s*[[(]\s*([nuµμm]?V)\s*[\])]$/;
+// A unit of voltage at the end of a name, as in "Fz [uV]" or "Fz (µV)". The patterns here
+// leave spaces to trim(), since a pattern with spaces either side of a part can take time
+// that grows with the square of a long run of them.
+const VOLTS = /[[(]\s*([nuµμm]?V)\s*[\])]$/;
 
-// Cells that hold no value. pandas writes a missing value as an empty cell, and others
-// write NaN or null.
-const EMPTY = /^\s*(?:nan|null|none|n\/a|na)?\s*$/i;
+// Cells that hold no value, once trimmed. pandas writes a missing value as an empty cell, and
+// others write NaN or null.
+const EMPTY = /^(?:nan|null|none|n\/a|na)?$/i;
 
 const normalName = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -105,8 +107,9 @@ function readColumns(body, names, delimiter, timeIndex) {
       column.values[row] = value;
       if (Number.isFinite(value)) {
         column.numbers += 1;
-      } else if (!EMPTY.test(cell) && column.words.length <= rows / 2) {
-        column.words.push({ row, text: cell.trim() });
+      } else if (column.words.length <= rows / 2) {
+        const text = cell.trim();
+        if (!EMPTY.test(text)) column.words.push({ row, text });
       }
     }
   }
@@ -141,8 +144,10 @@ function fillGaps(values) {
 }
 
 function labelOf(name, index) {
-  const [, label = name, unit = ''] = VOLTS.exec(name) ?? [];
-  return { label: label || `Channel ${index + 1}`, unit: unit.replace(/^[µμ]/, 'u') };
+  const volts = VOLTS.exec(name);
+  const label = volts ? name.slice(0, volts.index).trimEnd() : name;
+  const unit = volts ? volts[1].replace(/^[µμ]/, 'u') : '';
+  return { label: label || `Channel ${index + 1}`, unit };
 }
 
 // Events are numbered codes or words. A code is taken as the file writes it, since its value

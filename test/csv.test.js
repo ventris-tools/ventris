@@ -107,6 +107,32 @@ test('reads a unit of voltage from the end of a name', () => {
   );
 });
 
+// The patterns that read these once took about 12 seconds over this file, and longer runs
+// take longer still, so a hostile file could hang the page.
+test('reads long runs of spaces in names and cells in time that grows with their length', () => {
+  const spaces = ' '.repeat(100000);
+  const started = performance.now();
+  const recording = parseCsv(
+    buildCsv(
+      ['time', `Fz${spaces}x`, `Cz${spaces}[uV]`, 'Note'],
+      timed(250, [
+        [1, 2, `${spaces}x`],
+        [1, 2, ''],
+        [1, 2, ''],
+      ]),
+    ),
+  );
+  assert.ok(performance.now() - started < 1000, `took ${performance.now() - started} ms`);
+  assert.deepEqual(
+    recording.channels.map(({ label, unit }) => [label.length, unit]),
+    [
+      [100003, ''],
+      [2, 'uV'],
+    ],
+  );
+  assert.deepEqual(recording.annotations, [{ time: 0, duration: 0, text: 'x' }]);
+});
+
 test('skips the row numbers that pandas and recorders write', () => {
   for (const name of ['', 'Unnamed: 0', 'index', 'Sample Index']) {
     const rows = [0, 1, 2].map((i) => [i, i / 250, 5]);
