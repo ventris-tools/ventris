@@ -551,36 +551,107 @@ noscript .error { margin: 16px; }
   border-top: 1px solid var(--line);
 }
 
+/* Help: the viewer's left panel holds the contents, and the text sits where the traces would. */
+.help {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  background: var(--surface);
+}
+
+.help-side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100dvh;
+  padding: 12px 14px;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.help-side .brand { color: inherit; text-decoration: none; }
+
+.help-side .site-tools { margin: auto 0 0 -5px; }
+
+.contents { display: flex; flex-direction: column; gap: 14px; }
+
+.contents p { color: var(--ink-2); font-size: var(--text-xs); line-height: 1.4; }
+
+.contents ul { margin: 2px 0 0; padding: 0; list-style: none; }
+
+.contents a {
+  display: block;
+  padding: 2px 0;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.contents a:hover { color: var(--accent); }
+
 .help-page {
-  max-width: 44rem;
+  width: 100%;
+  max-width: calc(44rem + 96px);
   margin-inline: auto;
-  padding: 24px 16px 48px;
+  padding: 40px 48px 64px;
   font-size: var(--text-md);
   line-height: 1.6;
 }
 
 .help-page a { color: var(--accent); }
 
-.help-page .brand { color: inherit; text-decoration: none; }
+.help-page h1 { font-size: var(--text-xl); }
 
-.help-page h1 { margin-top: 24px; font-size: var(--text-xl); }
+.help-page h1 + p { margin-top: 10px; color: var(--ink-2); }
 
-.help-page h2 { margin-top: 28px; font-size: var(--text-lg); }
+/* A rule above each section, and room above it when a link from the contents lands on it. */
+.help-page h2 {
+  margin-top: 36px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-lg);
+  scroll-margin-top: 8px;
+}
 
-.help-page p { margin-top: 8px; }
+.help-page h2:target { color: var(--accent); }
 
-.help-page ul { margin: 8px 0 0; padding-left: 20px; }
+.help-page p { margin-top: 10px; }
 
-.help-page table { margin-top: 10px; }
+.help-page ul { margin: 10px 0 0; padding-left: 20px; }
+
+.help-page code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+/* An address too long for one line. It wraps at the edge, so a hyphen doesn't look like a break. */
+.help-page .example {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+.help-page .example code { padding: 0; }
+
+.help-page table { margin-top: 12px; }
 
 .help-page th, .help-page td {
-  padding: 6px 0;
+  padding: 8px 0;
   border-top: 1px solid var(--line);
   font-size: inherit;
   line-height: 1.5;
   text-align: left;
   vertical-align: top;
 }
+
+.help-page tr:last-child > * { border-bottom: 1px solid var(--line); }
 
 .help-page th { width: 34%; padding-right: 16px; }
 
@@ -636,4 +707,40 @@ kbd {
 
   .site-tools { flex: 1 1 auto; }
   .tool { min-width: 40px; height: 44px; }
+
+  /* Help: the logo and switches on one row, the contents under them, then the text. */
+  .help { grid-template-columns: minmax(0, 1fr); }
+
+  .help-side {
+    position: static;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px 16px;
+    height: auto;
+    padding: 0 16px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .help-side .site-tools { grid-area: 1 / 2; margin: 0 -8px 0 0; }
+
+  .contents {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px 16px;
+  }
+
+  .contents a { padding: 4px 0; }
+
+  .help-page { max-width: calc(44rem + 32px); padding: 28px 16px 48px; }
+}
+
+/* Too narrow for two columns in a table: each label sits above what it explains. */
+@media (max-width: 560px) {
+  .help-page :is(table, tbody, tr, th, td) { display: block; width: auto; }
+  .help-page th { padding-bottom: 0; }
+  .help-page td { padding-top: 2px; border-top: 0; }
+  .help-page tr:last-child > th { border-bottom: 0; }
 }

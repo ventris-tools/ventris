@@ -20,7 +20,7 @@ Ventris is the quick look before MNE-Python, EEGLAB or FieldTrip: what's in this
 - **Browse public datasets.** Open a recording from a NEMAR dataset by its GitHub link, with nothing to download or clone.
 - **Teach.** The demo shows a blink and eyes-closed alpha, with nothing for students to install.
 
-The [help page](https://ventris-tools.github.io/ventris/help.html) explains each panel and what it measures.
+The [help page](https://ventris-tools.github.io/ventris/help/) explains each panel and what it measures.
 
 ## Open a public recording by link
 
@@ -32,7 +32,7 @@ https://github.com/nemarDatasets/on003194/blob/main/sub-NEPO01/ses-Nepopre/eeg/s
 
 GitHub keeps only a small pointer for each file, so Ventris downloads the recording from OpenNeuro's public copy and checks it against the size and SHA-256 hash in the pointer. The address bar then links to the recording, so you can share the view.
 
-This works for EDF files in the datasets NEMAR mirrors from OpenNeuro, whose names start with `on`. NEMAR's own datasets, starting `nm`, don't open yet, because their storage doesn't let a web page download them. The [help page](https://ventris-tools.github.io/ventris/help.html#links) lists the links that work.
+This works for EDF files in the datasets NEMAR mirrors from OpenNeuro, whose names start with `on`. NEMAR's own datasets, starting `nm`, don't open yet, because their storage doesn't let a web page download them. The [help page](https://ventris-tools.github.io/ventris/help/#links) lists the links that work.
 
 ## Your recordings stay on your computer
 

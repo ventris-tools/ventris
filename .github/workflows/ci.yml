@@ -22,10 +22,14 @@ jobs:
       - run: npm run format:check
       - run: npm run coverage
       - name: Build the site
-        run: mkdir _site && cp -R index.html help.html styles.css favicon.svg js fonts LICENSE licenses _site/
+        run: mkdir _site && cp -R index.html help styles.css favicon.svg js fonts LICENSE licenses _site/
+      # Each page's links are relative to its own folder, so each is checked from there.
       - name: Check that the site has every file the pages link to
         working-directory: _site
-        run: grep -ohE '(src|href)="[^"#:]+"' index.html help.html | cut -d'"' -f2 | xargs ls > /dev/null
+        run: |
+          for folder in . help; do
+            (cd "$folder" && grep -oE '(src|href)="[^"#:]+"' index.html | cut -d'"' -f2 | xargs ls > /dev/null)
+          done
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name == 'push'
         with:
