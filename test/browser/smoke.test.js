@@ -89,8 +89,8 @@ function launch(profile) {
     let said = '';
     chrome.stderr.on('data', (chunk) => {
       said += chunk;
-      const listening = /DevTools listening on ws:\/\/([^/]+)\//.exec(said);
-      if (listening) resolve({ chrome, host: listening[1] });
+      const listening = /DevTools listening on (ws:\/\/\S+)/.exec(said);
+      if (listening) resolve({ chrome, browser: listening[1], host: new URL(listening[1]).host });
     });
     chrome.on('exit', (code) => reject(new Error(`Chrome stopped with code ${code}: ${said}`)));
   });
@@ -225,8 +225,28 @@ const drawnPixels = (id) => `(() => {
   return count;
 })()`;
 
+// Asks Chrome to close over the DevTools protocol, which stops its helper processes too, where
+// a signal stops only the main one and leaves the others writing to the profile.
+async function closeChrome({ chrome, browser }) {
+  if (chrome.exitCode !== null || chrome.signalCode !== null) return;
+  const stopped = new Promise((resolve) => chrome.once('exit', resolve));
+  const fallback = setTimeout(() => chrome.kill('SIGKILL'), 10000);
+  try {
+    const socket = new WebSocket(browser);
+    await new Promise((resolve, reject) => {
+      socket.addEventListener('open', resolve);
+      socket.addEventListener('error', reject);
+    });
+    socket.send(JSON.stringify({ id: 1, method: 'Browser.close' }));
+  } catch {
+    chrome.kill('SIGKILL');
+  }
+  await stopped;
+  clearTimeout(fallback);
+}
+
 let server;
-let chrome;
+let launched;
 let tab;
 let profile;
 let origin;
@@ -237,21 +257,21 @@ before(async () => {
   server = await serve();
   origin = `http://127.0.0.1:${server.address().port}`;
   profile = mkdtempSync(join(tmpdir(), 'ventris-chrome-'));
-  const launched = await launch(profile);
-  chrome = launched.chrome;
+  launched = await launch(profile);
   tab = await Tab.open(launched.host);
 });
 
+// Removing the profile is tidying, not something under test, so a failure only warns.
 after(async () => {
   tab?.socket.close();
-  if (chrome) {
-    const stopped = new Promise((resolve) => chrome.once('exit', resolve));
-    chrome.kill();
-    await stopped;
-  }
+  if (launched) await closeChrome(launched);
   server?.close();
-  // Chrome's helper processes can still be writing to the profile after Chrome itself stops.
-  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  if (!profile) return;
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (error) {
+    console.warn(`Left the Chrome profile at ${profile}: ${error.message}`);
+  }
 });
 
 test(
