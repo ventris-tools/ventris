@@ -201,11 +201,10 @@ function annotationButton({ time, text }, color) {
   return item;
 }
 
-function showAnnotations({ annotations }) {
+function showAnnotations({ annotations }, colors) {
   annotationSection.hidden = annotations.length === 0;
   // One at a time, because a recording can hold more of them than a call can take arguments.
   const items = document.createDocumentFragment();
-  const colors = eventColors(annotations);
   annotations.forEach((annotation, index) => {
     items.append(annotationButton(annotation, colors[index]));
   });
@@ -319,18 +318,20 @@ function show(recording, name, start = 0) {
   updateGainButtons();
   nameHeading.textContent = name;
   showDetails(recording);
-  showAnnotations(recording);
+  const colors = eventColors(recording.annotations);
+  showAnnotations(recording, colors);
   noteLine.textContent = recording.warnings.join(' ');
   noteLine.hidden = recording.warnings.length === 0;
+  view.setRecording(recording, colors);
 
-  const choices = windowChoices(recording);
+  // The longest windows depend on how many rows fit on screen, as measured now.
+  const choices = windowChoices(recording, view.rowsDrawn());
   windowSelect.replaceChildren(
     ...choices.map(
       (seconds) => new Option(formatWindow(seconds, recording.duration), String(seconds)),
     ),
   );
   const preferred = choices.findLast((seconds) => seconds <= PREFERRED_WINDOW) ?? choices[0];
-  view.setRecording(recording);
   setWindow(preferred);
 }
 
@@ -583,5 +584,6 @@ showDemo();
 const startingLink = linkInAddress();
 if (startingLink) openLink(startingLink);
 
-// A canvas keeps whatever font it was drawn with, so redraw once the real one arrives.
-document.fonts.ready.then(() => view.resize());
+// A canvas measures and draws in whatever font it has, so measure and redraw once the real
+// one arrives.
+document.fonts.ready.then(() => view.remeasure());

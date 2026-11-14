@@ -122,8 +122,9 @@ button, select, input { font: inherit; }
 
 canvas { display: block; }
 
-/* Positioned so that the cursor's marks stack by document order: shading behind, line in front. */
-.traces { position: relative; touch-action: pan-y; cursor: crosshair; }
+/* Positioned so that the cursor's marks stack by document order: shading behind, line in front.
+   It covers only the rows near the view, and traces.js moves it down the frame as it scrolls. */
+.traces { position: absolute; top: 0; left: 0; touch-action: pan-y; cursor: crosshair; }
 
 .cursor-row, .cursor-line, .zoom-box { position: absolute; top: 0; pointer-events: none; }
 
