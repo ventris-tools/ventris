@@ -1,14 +1,14 @@
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
-import { filterRecording } from './filters.js';
 import { amount, count, decimalsFor, downloadProgress, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
 import { download, LinkError, resolveLink } from './remote.js';
-import { describe, isOff, record, redo, startHistory, STEPS, undo } from './steps.js';
+import { describe, isOff, record, redo, runSteps, startHistory, STEPS, undo } from './steps.js';
 import {
   clamp,
   eventColors,
   GAIN_LIMITS,
+  rowName,
   sidewaysPixels,
   TraceView,
   windowChoices,
@@ -91,10 +91,11 @@ const filterStatus = $('filter-status');
 // zoom shortens. Rows are the channels a zoom keeps, or null for all of them. A zoom keeps
 // where its window started, to go back to.
 //
-// filters is the history of the display filter's settings, which carries over to the next
-// recording. processed is the recording filtered with them, once it's ready, and raw says the
-// reader has asked to see the samples as recorded instead. untouched counts the channels a
-// filter leaves alone, and problem says why a recording couldn't be filtered.
+// filters is the history of the display filter's settings, montage included, which carries
+// over to the next recording. processed is the recording filtered with them, once it's ready,
+// and raw says the reader has asked to see the samples as recorded instead. untouched counts
+// the channels the filter leaves alone, kept the EEG channels the montage leaves alone, and
+// problem says why a recording couldn't be filtered.
 const state = {
   recording: null,
   start: 0,
@@ -108,6 +109,7 @@ const state = {
   processed: null,
   filtering: false,
   untouched: 0,
+  kept: 0,
   problem: null,
 };
 let bandTimer = 0;
@@ -135,7 +137,7 @@ function showHover(hit, announce = false) {
   }
   const { time, channel, value, spread } = hit;
   const reading = amount(value, channel.unit, decimalsFor(4 * spread));
-  const text = `${formatClock(time, 2)} · ${channel.label} · ${reading}`;
+  const text = `${formatClock(time, 2)} · ${rowName(channel)} · ${reading}`;
   readout.textContent = text;
   if (announce) cursorStatus.textContent = text;
 }
@@ -145,17 +147,27 @@ const latestStart = () => Math.max(0, state.recording.duration - state.length);
 // The recording drawn: filtered once a filter is ready, unless the reader asked for raw.
 const onScreen = () => (state.raw || !state.processed ? state.recording : state.processed);
 
+const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
 // What the traces show, in a few words, or '' with every filter off.
 function filterText() {
   const settings = state.filters.present;
   if (isOff(settings)) return '';
   if (state.problem) return `Raw · ${FILTER_PROBLEMS[state.problem]}`;
   if (state.raw) return 'Raw · filter paused';
-  const label = describe(settings);
-  if (state.filtering) return `Filtering ${label}…`;
-  const unfiltered =
-    state.untouched > 0 ? ` · ${count(state.untouched, 'channel')} unfiltered` : '';
-  return `Filtered ${label}${unfiltered}`;
+  const { filter, montage } = describe(settings);
+  if (state.filtering) {
+    return filter
+      ? `Filtering ${[filter, montage].filter(Boolean).join(' · ')}…`
+      : `Applying ${montage}…`;
+  }
+  const parts = [
+    filter && `Filtered ${filter}`,
+    montage,
+    state.untouched > 0 && `${count(state.untouched, 'channel')} unfiltered`,
+    state.kept > 0 && `${count(state.kept, 'EEG channel')} not re-referenced`,
+  ];
+  return capitalise(parts.filter(Boolean).join(' · '));
 }
 
 function moveTo(time) {
@@ -182,7 +194,8 @@ function zoomTo(span, rows) {
 
 const view = new TraceView(canvas, $('axis'), showHover, scrollTime, zoomTo);
 
-// One list for each filter setting, with Off first.
+// One list for each setting, with Off first. A list's values are text, so a choice is found
+// by its text to get back its value, which may be a number.
 const filterSelects = STEPS.map(({ key, label, choices }) => {
   const choice = document.createElement('label');
   const name = document.createElement('span');
@@ -192,11 +205,11 @@ const filterSelects = STEPS.map(({ key, label, choices }) => {
   select.id = key;
   select.append(
     new Option('Off', ''),
-    ...choices.map((value) => new Option(`${value} Hz`, String(value))),
+    ...choices.map(({ value, text }) => new Option(text, String(value))),
   );
   select.addEventListener('change', () => {
-    const value = select.value === '' ? null : Number(select.value);
-    changeFilters({ ...state.filters.present, [key]: value });
+    const chosen = choices.find(({ value }) => String(value) === select.value);
+    changeFilters({ ...state.filters.present, [key]: chosen ? chosen.value : null });
   });
   choice.append(name, select);
   filterChoices.append(choice);
@@ -437,6 +450,7 @@ function show(recording, name, { start = 0, levels } = {}) {
     processed: null,
     filtering: !isOff(state.filters.present),
     untouched: 0,
+    kept: 0,
     problem: null,
   });
   viewer.hidden = false;
@@ -497,20 +511,21 @@ async function applyFilters() {
   const settings = state.filters.present;
   state.problem = null;
   if (isOff(settings)) {
-    Object.assign(state, { processed: null, filtering: false, untouched: 0 });
+    Object.assign(state, { processed: null, filtering: false, untouched: 0, kept: 0 });
     showSignals();
     return;
   }
   state.filtering = true;
   showFilters();
   refresh();
-  const steps = filterRecording(recording.channels, settings);
+  const steps = runSteps(recording.channels, settings);
   const result = await drain(steps, () => run === filterRun, FILTER_SLICE);
   if (run !== filterRun) return;
   Object.assign(state, {
     processed: result.channels && { ...recording, channels: result.channels },
     filtering: false,
     untouched: result.untouched,
+    kept: result.kept,
     problem: result.reason,
   });
   showSignals();

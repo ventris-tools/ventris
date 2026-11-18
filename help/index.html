@@ -158,11 +158,13 @@
         <tr><th scope="row">High-pass</th><td>Takes out offsets and slow drift below the frequency you choose.</td></tr>
         <tr><th scope="row">Low-pass</th><td>Takes out fast activity above the frequency you choose, such as muscle. EMG channels keep theirs, since that's what they measure.</td></tr>
         <tr><th scope="row">Notch</th><td>Takes out mains hum at 50 or 60 Hz, though not its harmonics.</td></tr>
+        <tr><th scope="row">Montage</th><td>Re-references the EEG channels. Average takes the mean of them all away from each. Laplacian takes the mean of each electrode's nearest neighbours away from it, which sharpens activity under the electrode, such as the mu rhythm over C3 and C4.</td></tr>
         <tr><th scope="row">Show raw</th><td>Draws the samples as recorded, to compare. Select it again, or press <kbd>R</kbd>, to go back to the filtered traces.</td></tr>
       </tbody>
     </table>
     <p>Each filter runs forwards and then backwards, so nothing shifts in time and peaks stay under their annotations. Running twice halves the signal at the cutoff frequency, as MNE-Python's IIR filters do. The high-pass and low-pass are second-order Butterworth filters, and the notch is the one SciPy's <code>iirnotch</code> makes, with a Q of 30.</p>
     <p>Channels from sensors, such as triggers, breathing belts and oximeters, stay as recorded, and the line under the traces says how many. A filter too close to half a channel's sample rate is left out for that channel.</p>
+    <p>A montage runs after the filters, on EEG channels sampled at the same rate. It leaves out bipolar pairs such as Fp1-F7, ear and mastoid references, flat channels and every other kind of channel. A Laplacian finds neighbours from 10-10 electrode names, so it leaves out any channel whose name it doesn't know, and any with fewer than two neighbours. Each row a montage changes says so after its name, as in C3−avg or C3−lap, and the line under the traces counts the EEG channels it left alone.</p>
     <p>The traces, their ± figures, the value you point at and the frequency bands follow the filter. The time domain figures and Info describe the file as recorded.</p>
     <p>Filters stay on when you open another recording. Undo a change of filter with <kbd>Ctrl</kbd> <kbd>Z</kbd>, or <kbd>Cmd</kbd> <kbd>Z</kbd> on a Mac, and redo it by adding <kbd>Shift</kbd>.</p>
     <p>Gaps in a recording are filtered as if they weren't there, so a filter can ring for a few seconds after one. A recording with more than 150 million samples to filter stays raw.</p>
@@ -212,7 +214,7 @@
     <ul>
       <li>Ventris is a research tool, not a medical device.</li>
       <li>BDF files aren't supported yet.</li>
-      <li>It doesn't re-reference or export signals.</li>
+      <li>It doesn't export signals.</li>
     </ul>
 
     <h2 id="source">Source code</h2>

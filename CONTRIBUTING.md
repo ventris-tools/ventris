@@ -53,7 +53,8 @@ npm run format:check
 | `js/channels.js` | Reads the kind of each channel from its label |
 | `js/dsp.js` | Computes power spectra, band shares and time statistics |
 | `js/filters.js` | Filters the traces for display: a high-pass, a low-pass and a mains notch |
-| `js/steps.js` | Holds the display's settings, in the order they apply, and their undo history |
+| `js/montage.js` | Re-references the EEG channels for display: a common average or a surface Laplacian |
+| `js/steps.js` | Holds the display's settings, runs the steps in order, and keeps their undo history |
 | `js/format.js` | Writes times and amounts for the interface |
 | `js/info.js` | Builds the rows of the details panel |
 | `js/remote.js` | Reads a link to a public recording on NEMAR or OpenNeuro, and downloads it |

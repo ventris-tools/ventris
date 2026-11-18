@@ -92,7 +92,7 @@ button, select, input { font: inherit; }
 
 .viewer {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr) 232px;
+  grid-template-columns: 200px minmax(0, 1fr) 232px;
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100dvh;
 }
@@ -587,7 +587,7 @@ noscript .error { margin: 16px; }
 /* Help: the viewer's left panel holds the contents, and the text sits where the traces would. */
 .help {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   background: var(--surface);
 }
 
@@ -729,7 +729,7 @@ kbd {
   .open-recording { flex: none; width: 140px; }
   .panel-controls .control { flex: 1 1 40%; }
   .panel-controls .filter-controls { flex-basis: 100%; }
-  .filter-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .filter-choices { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .filter-choice { grid-template-columns: none; gap: 4px; }
   .show-raw { min-height: 44px; }
 
@@ -776,6 +776,7 @@ kbd {
 
 /* Too narrow for two columns in a table: each label sits above what it explains. */
 @media (max-width: 560px) {
+  .filter-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .help-page :is(table, tbody, tr, th, td) { display: block; width: auto; }
   .help-page th { padding-bottom: 0; }
   .help-page td { padding-top: 2px; border-top: 0; }

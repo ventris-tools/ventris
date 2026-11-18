@@ -60,6 +60,9 @@ const CURSOR_KEYS = {
 
 export const clamp = (value, lowest, highest) => Math.min(highest, Math.max(lowest, value));
 
+// A row's name: the channel's label, and a montage's mark when one changed it, as in "C3−lap".
+export const rowName = ({ label, mark }) => (mark ? `${label}−${mark}` : label);
+
 // Evenly spaced samples from part of a channel, sorted. A typed array sorts by value on its own,
 // which is far faster than an array with a comparison function.
 function sortedSample(data, from, to, wanted) {
@@ -388,7 +391,7 @@ export class TraceView {
     const { context } = this;
     const { channels } = this.recording;
     context.font = this.font(LABEL_SIZE);
-    const labels = channels.map(({ label }) => context.measureText(label).width);
+    const labels = channels.map((channel) => context.measureText(rowName(channel)).width);
     context.font = this.font(RANGE_SIZE);
     const ranges = channels.flatMap((_, row) =>
       GAIN_LIMITS.map((gain) => context.measureText(this.rangeText(row, gain)).width),
@@ -711,7 +714,7 @@ export class TraceView {
     context.textAlign = 'right';
     rows.forEach(({ channel, row, middle }) => {
       context.font = labelFont;
-      context.fillText(channel.label, gutter - 10, middle - 6);
+      context.fillText(rowName(channel), gutter - 10, middle - 6);
       context.font = rangeFont;
       context.fillText(this.rangeText(row, this.gain), gutter - 10, middle + 7);
     });
