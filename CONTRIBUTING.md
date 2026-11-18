@@ -54,6 +54,7 @@ npm run format:check
 | `js/dsp.js` | Computes power spectra, band shares and time statistics |
 | `js/filters.js` | Filters the traces for display: a high-pass, a low-pass and a mains notch |
 | `js/montage.js` | Re-references the EEG channels for display: a common average or a surface Laplacian |
+| `js/erd.js` | Averages band power around each kind of annotation, the event-related desynchronization and synchronization |
 | `js/steps.js` | Holds the display's settings, runs the steps in order, and keeps their undo history |
 | `js/format.js` | Writes times and amounts for the interface |
 | `js/info.js` | Builds the rows of the details panel |

@@ -40,6 +40,22 @@ test('the palette holds the colours that annotations are given, and no others', 
   );
 });
 
+// A rule's declarations, by its selector.
+function rule(selector) {
+  const start = css.indexOf(`\n${selector} {`);
+  assert.ok(start >= 0, `styles.css has no ${selector} rule`);
+  return css.slice(start, css.indexOf('}', start));
+}
+
+test('event-related power draws in the annotation colours, on the background they are checked on', () => {
+  assert.match(rule('.power-chart'), /background: var\(--surface\);/);
+  assert.match(rule('.power-line'), /stroke: var\(--event\);/);
+  assert.match(rule('.power-kind'), /border-left: 3px solid var\(--event\);/);
+  // Its axes are in the secondary text colour, which reads on that background too.
+  assert.match(rule('.power-zero, .power-onset'), /stroke: var\(--ink-2\);/);
+  assert.match(rule('.power-chart text'), /fill: var\(--ink-2\);/);
+});
+
 for (const [theme, colors] of Object.entries(themes)) {
   const hex = (name) => {
     assert.match(colors[name] ?? '', /^#[0-9a-f]{6}$/, `${name} in the ${theme} theme`);

@@ -19,6 +19,7 @@
   <link rel="modulepreload" href="js/demo.js">
   <link rel="modulepreload" href="js/dsp.js">
   <link rel="modulepreload" href="js/edf.js">
+  <link rel="modulepreload" href="js/erd.js">
   <link rel="modulepreload" href="js/filters.js">
   <link rel="modulepreload" href="js/format.js">
   <link rel="modulepreload" href="js/info.js">
@@ -113,6 +114,30 @@
       <details class="section" id="annotations" open hidden>
         <summary><h2>Annotations</h2></summary>
         <ol class="annotations" id="annotation-list"></ol>
+      </details>
+
+      <details class="section" id="event-power" hidden>
+        <summary><h2>Event-related power</h2></summary>
+        <div class="power-choices">
+          <div class="filter-choice" role="group" aria-labelledby="power-kinds-label">
+            <span id="power-kinds-label">Average</span>
+            <div class="power-kinds" id="power-kinds"></div>
+          </div>
+          <label class="filter-choice">
+            <span>Band</span>
+            <select id="power-band"></select>
+          </label>
+          <label class="filter-choice">
+            <span>Baseline</span>
+            <select id="power-baseline"></select>
+          </label>
+          <label class="filter-choice">
+            <span>Channels</span>
+            <input id="power-channels" type="text" placeholder="Cursor's row" autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
+        </div>
+        <div id="power-charts"></div>
+        <p class="note section-note" id="power-note"></p>
       </details>
 
       <details class="section" id="time-domain">

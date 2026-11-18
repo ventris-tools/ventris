@@ -1,5 +1,15 @@
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
+import {
+  AFTER,
+  BEFORE,
+  chartScale,
+  DURING,
+  eventKinds,
+  eventPower,
+  findChannels,
+  POWER_BANDS,
+} from './erd.js';
 import { amount, count, decimalsFor, downloadProgress, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
 import { download, LinkError, resolveLink } from './remote.js';
@@ -39,6 +49,28 @@ const FILTER_PROBLEMS = {
   large: 'too long to filter here',
   memory: 'out of memory to filter',
 };
+
+// How long the cursor rests on a row before event-related power follows it, so that passing
+// over rows on the way to the chart leaves it as it was.
+const DWELL = 400;
+
+// How long typing can pause before the channels named are measured.
+const TYPING_DELAY = 300;
+
+const POWER_PROBLEMS = {
+  slow: 'Sampled too slowly for this band.',
+  rest: 'No baseline annotation lies in the recording.',
+  flat: 'Flat in this band.',
+};
+
+// Event-related power's chart, in its own units, which are pixels at the panel's width, with
+// the room it leaves around the plot for its labels.
+const CHART = { width: 204, height: 100, left: 22, right: 6, top: 6, bottom: 16 };
+
+// The dashes that tell the curves apart, as well as their colours.
+const DASHES = ['none', '6 3', '2 2', '8 3 2 3'];
+
+const SVG = 'http://www.w3.org/2000/svg';
 
 const BAND_PROBLEMS = {
   'no-eeg': 'This recording has no EEG channels to measure.',
@@ -86,6 +118,13 @@ const timeNote = $('time-note');
 const filterChoices = $('filter-choices');
 const rawButton = $('show-raw');
 const filterStatus = $('filter-status');
+const powerSection = $('event-power');
+const powerKindList = $('power-kinds');
+const powerBand = $('power-band');
+const powerBaseline = $('power-baseline');
+const powerChannels = $('power-channels');
+const powerCharts = $('power-charts');
+const powerNote = $('power-note');
 
 // The window is the length chosen in the list, and length is how much is on screen, which a
 // zoom shortens. Rows are the channels a zoom keeps, or null for all of them. A zoom keeps
@@ -128,8 +167,17 @@ let opening = false;
 let downloading = null;
 // The worker opening a file, if any.
 let opener = null;
+// Event-related power: the recording's kinds of annotation, each with its colour, the keys of
+// those it averages, which carry over to the next recording where it has them, and the row
+// it follows when no channel is named. dwell is the row the cursor has come to rest on.
+let powerKinds = [];
+const power = { kinds: new Set(), row: null };
+let powerRun = 0;
+let powerTimer = 0;
+const dwell = { row: null, timer: 0 };
 
 function showHover(hit, announce = false) {
+  followCursor(hit);
   if (!hit) {
     readout.textContent = '';
     cursorStatus.textContent = '';
@@ -356,6 +404,206 @@ async function updateBands() {
   if (result) showBands(result, shown !== state.recording);
 }
 
+// The kinds of annotation to average, and the baselines. The kinds chosen before carry over
+// where this recording has them, and otherwise every kind with a colour starts chosen.
+function showPowerChoices({ annotations }, colors) {
+  const colorOf = new Map(annotations.map(({ text }, i) => [text.trim().toLowerCase(), colors[i]]));
+  powerKinds = eventKinds(annotations).map((kind) => ({ ...kind, color: colorOf.get(kind.key) }));
+  powerSection.hidden = powerKinds.length === 0;
+  const carried = powerKinds.filter(({ key }) => power.kinds.has(key));
+  const chosen =
+    carried.length > 0 ? carried : powerKinds.filter(({ color }) => color !== '--ink-2');
+  power.kinds = new Set(chosen.map(({ key }) => key));
+  power.row = null;
+  // One at a time, since every annotation can be a kind of its own, as in showAnnotations.
+  const choices = document.createDocumentFragment();
+  const baselines = document.createDocumentFragment();
+  baselines.append(new Option(`${BEFORE} s before`, ''));
+  for (const kind of powerKinds) {
+    choices.append(kindChoice(kind));
+    baselines.append(new Option(kind.text, kind.key));
+  }
+  powerKindList.replaceChildren(choices);
+  const baseline = powerBaseline.value;
+  powerBaseline.replaceChildren(baselines);
+  powerBaseline.value = powerKinds.some(({ key }) => key === baseline) ? baseline : '';
+}
+
+function kindChoice({ key, text, color }) {
+  const choice = document.createElement('label');
+  const box = document.createElement('input');
+  choice.className = 'power-kind';
+  // The same colour as the annotations and the curves, which the key below says in words.
+  choice.style.setProperty('--event', `var(${color})`);
+  box.type = 'checkbox';
+  box.checked = power.kinds.has(key);
+  box.addEventListener('change', () => {
+    if (box.checked) power.kinds.add(key);
+    else power.kinds.delete(key);
+    schedulePower();
+  });
+  choice.append(box, text);
+  return choice;
+}
+
+// Event-related power follows the row the cursor comes to rest on.
+function followCursor(hit) {
+  const row = hit ? hit.row : null;
+  if (row === dwell.row) return;
+  clearTimeout(dwell.timer);
+  dwell.row = row;
+  if (row === null || row === power.row) return;
+  dwell.timer = setTimeout(() => {
+    power.row = row;
+    if (!powerChannels.value.trim()) schedulePower(0);
+  }, DWELL);
+}
+
+function schedulePower(delay = 60) {
+  clearTimeout(powerTimer);
+  powerRun += 1;
+  powerTimer = setTimeout(updatePower, delay);
+}
+
+function* measurePower(channels, rows, kinds, band, rest) {
+  const results = [];
+  for (const row of rows) results.push(yield* eventPower(channels[row], kinds, band, rest));
+  return results;
+}
+
+// Measures event-related power at the channels named, or at the cursor's row, in the traces
+// as drawn, while its section is open. Gives up if anything it depends on changes.
+async function updatePower() {
+  if (!powerSection.open || powerSection.hidden) return;
+  const run = powerRun;
+  const drawn = onScreen();
+  const kinds = powerKinds.filter(({ key }) => power.kinds.has(key));
+  const named = powerChannels.value.trim();
+  const { rows, unknown } = named
+    ? findChannels(drawn.channels, named)
+    : { rows: power.row === null ? [] : [power.row], unknown: [] };
+  const band = POWER_BANDS.find(({ value }) => value === powerBand.value);
+  const rest = powerKinds.find(({ key }) => key === powerBaseline.value) ?? null;
+  const steps = measurePower(drawn.channels, kinds.length > 0 ? rows : [], kinds, band, rest);
+  const results = await drain(steps, () => run === powerRun, FILTER_SLICE);
+  if (!results) return;
+  const scale = chartScale(results.flatMap(({ curves }) => curves ?? []));
+  powerCharts.replaceChildren(
+    ...results.map((result, i) => powerFigure(drawn.channels[rows[i]], kinds, result, scale)),
+  );
+  const problems = [
+    kinds.length === 0 && 'Choose annotations to average.',
+    rows.length === 0 && !named && 'Point at a channel on the traces, or name channels here.',
+    unknown.length > 0 && `No channel named ${unknown.join(', ')}.`,
+  ];
+  const recorded = drawn === state.recording;
+  powerNote.textContent =
+    problems.find(Boolean) || `From the ${recorded ? 'traces as recorded' : 'filtered traces'}`;
+}
+
+function svgElement(name, attributes, text = '') {
+  const element = document.createElementNS(SVG, name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  element.textContent = text;
+  return element;
+}
+
+// A line in a curve's colour and dashes, on the chart or in its key.
+function curveLine(element, { color }, index) {
+  element.setAttribute('class', 'power-line');
+  element.setAttribute('stroke-dasharray', DASHES[index % DASHES.length]);
+  element.style.setProperty('--event', `var(${color})`);
+  return element;
+}
+
+function powerChart({ times, curves }, kinds, { low, high, ticks }) {
+  const { width, height, left, right, top, bottom } = CHART;
+  const x = (time) => left + ((time + BEFORE) / (BEFORE + AFTER)) * (width - left - right);
+  const y = (db) => top + ((high - db) / (high - low)) * (height - top - bottom);
+  const chart = svgElement('svg', {
+    class: 'power-chart',
+    viewBox: `0 0 ${width} ${height}`,
+    'aria-hidden': 'true',
+  });
+  for (const tick of ticks) {
+    chart.append(
+      svgElement('line', {
+        class: tick === 0 ? 'power-zero' : 'power-grid',
+        x1: left,
+        x2: width - right,
+        y1: y(tick),
+        y2: y(tick),
+      }),
+      svgElement('text', { class: 'power-db', x: left - 4, y: y(tick) }, amount(tick, '', 0)),
+    );
+  }
+  for (let second = -BEFORE; second <= AFTER; second += 1) {
+    const unit = second + 1 > AFTER ? 's' : '';
+    const label = { class: 'power-time', x: x(second), y: height - 3 };
+    chart.append(svgElement('text', label, amount(second, unit, 0)));
+  }
+  chart.append(
+    svgElement('line', { class: 'power-onset', x1: x(0), x2: x(0), y1: top, y2: y(low) }),
+  );
+  curves.forEach(({ db }, index) => {
+    if (!db) return;
+    const points = Array.from(db, (value, i) => `${x(times[i]).toFixed(1)},${y(value).toFixed(1)}`);
+    chart.append(
+      curveLine(svgElement('polyline', { points: points.join(' ') }), kinds[index], index),
+    );
+  });
+  return chart;
+}
+
+// The key to a chart, which also gives each kind's figures in words.
+function powerKey(curves, kinds) {
+  const table = document.createElement('table');
+  const head = table.createTHead().insertRow();
+  table.className = 'power-key';
+  for (const text of ['Kind', 'Events', `${DURING[0]} to ${DURING[1]} s`]) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = text;
+    head.append(cell);
+  }
+  const body = table.createTBody();
+  curves.forEach(({ count, during }, index) => {
+    const row = body.insertRow();
+    const name = document.createElement('th');
+    const swatch = svgElement('svg', {
+      class: 'power-swatch',
+      viewBox: '0 0 18 6',
+      'aria-hidden': 'true',
+    });
+    swatch.append(
+      curveLine(svgElement('line', { x1: 0, x2: 18, y1: 3, y2: 3 }), kinds[index], index),
+    );
+    name.scope = 'row';
+    name.append(swatch, kinds[index].text);
+    row.append(name);
+    row.insertCell().textContent = String(count);
+    row.insertCell().textContent = during === null ? '–' : amount(during, 'dB', 1);
+  });
+  return table;
+}
+
+function powerFigure(channel, kinds, result, scale) {
+  const figure = document.createElement('figure');
+  const caption = document.createElement('figcaption');
+  figure.className = 'power-figure';
+  caption.textContent = rowName(channel);
+  figure.append(caption);
+  if (result.reason) {
+    const note = document.createElement('p');
+    note.className = 'note';
+    note.textContent = POWER_PROBLEMS[result.reason];
+    figure.append(note);
+  } else {
+    figure.append(powerChart(result, kinds, scale), powerKey(result.curves, kinds));
+  }
+  return figure;
+}
+
 function showZoom() {
   const zoomed = state.zoom !== null;
   resetButton.hidden = !zoomed;
@@ -460,6 +708,7 @@ function show(recording, name, { start = 0, levels } = {}) {
   showDetails(recording);
   const colors = eventColors(recording.annotations);
   showAnnotations(recording, colors);
+  showPowerChoices(recording, colors);
   noteLine.textContent = recording.warnings.join(' ');
   noteLine.hidden = recording.warnings.length === 0;
   view.setRecording(recording, colors, levels);
@@ -474,6 +723,7 @@ function show(recording, name, { start = 0, levels } = {}) {
   const preferred = choices.findLast((seconds) => seconds <= PREFERRED_WINDOW) ?? choices[0];
   setWindow(preferred);
   showFilters();
+  schedulePower();
   if (state.filtering) applyFilters();
 }
 
@@ -499,6 +749,7 @@ function showSignals() {
   view.setSignals(onScreen().channels);
   showFilters();
   refresh();
+  schedulePower();
 }
 
 // Filters the recording with the current settings, a slice at a time, and draws the result
@@ -749,6 +1000,11 @@ windowSelect.addEventListener('change', () => setWindow(Number(windowSelect.valu
 resetButton.addEventListener('click', resetZoom);
 rawButton.addEventListener('click', toggleRaw);
 timeSection.addEventListener('toggle', showTimes);
+powerSection.addEventListener('toggle', () => schedulePower(0));
+powerBand.append(...POWER_BANDS.map(({ value, text }) => new Option(text, value)));
+powerBand.addEventListener('change', () => schedulePower());
+powerBaseline.addEventListener('change', () => schedulePower());
+powerChannels.addEventListener('input', () => schedulePower(TYPING_DELAY));
 canvas.addEventListener('dblclick', resetZoom);
 
 // Page keys follow the slider convention, where Page Up means later. The canvas keeps the
