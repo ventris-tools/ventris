@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { channelType, isEeg } from '../js/channels.js';
+import { channelType, isEeg, isSensor } from '../js/channels.js';
 
 const kinds = {
   EEG: [
@@ -74,4 +74,14 @@ for (const [kind, labels] of Object.entries(kinds)) {
 test('picks EEG channels out of a list', () => {
   assert.equal(isEeg({ label: 'Cz' }), true);
   assert.equal(isEeg({ label: 'Snore' }), false);
+});
+
+test('tells sensors from electrodes, so a display filter leaves sensors as recorded', () => {
+  for (const label of ['Resp oro-nasal', 'Event marker', 'SpO2', 'Snore', 'STI 014', 'Status']) {
+    assert.equal(isSensor(label), true, label);
+  }
+  for (const label of ['Cz', 'EOG horizontal', 'EMG submental', 'EKG', 'MEG 0113', 'Mystery']) {
+    assert.equal(isSensor(label), false, label);
+  }
+  assert.equal(isSensor('EXG Channel 0'), false);
 });

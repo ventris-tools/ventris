@@ -911,3 +911,75 @@ test('lays the rows out again when the frame changes size, and only then', () =>
   frame.resized();
   assert.equal(view.rowHeight, 450);
 });
+
+// The same channels with their samples scaled, as a filter might leave them.
+const scaled = ({ channels }, factor) =>
+  channels.map((channel) => ({ ...channel, data: channel.data.map((value) => value * factor) }));
+
+const wavy = () => ({
+  channels: ['Fp1', 'Fp2', 'C3', 'C4'].map((label, row) => ({
+    label,
+    unit: 'uV',
+    fs: 256,
+    data: Float32Array.from({ length: 256 * 60 }, (_, i) => (row + 1) * 30 * Math.sin(i / 7)),
+  })),
+  duration: 60,
+});
+
+test('new samples for the same channels keep the window, rows, scroll and cursor', () => {
+  const recording = wavy();
+  const { view, canvas, hits } = viewOf(recording);
+  view.setView(10, 5, 2, { first: 1, count: 2 });
+  canvas.parentElement.scrollTop = 7;
+  view.moveCursor(100, 2, false);
+  const reading = hits.at(-1).hit.value;
+  hits.length = 0;
+  view.setSignals(scaled(recording, 0.5));
+  assert.deepEqual([view.start, view.length, view.gain], [10, 5, 2]);
+  assert.deepEqual([view.firstRow, view.rowCount], [1, 2]);
+  assert.equal(canvas.parentElement.scrollTop, 7);
+  assert.deepEqual(view.cursor, { x: 100, row: 2 });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].announce, false);
+  near(hits[0].hit.value, reading * 0.5);
+});
+
+test('rows say the range of the samples drawn', () => {
+  const recording = wavy();
+  const { view, canvas } = viewOf(recording);
+  view.setView(0, 10, 1);
+  view.draw();
+  const before = drawn(canvas).find((text) => text.startsWith('±'));
+  view.setSignals(scaled(recording, 0.01));
+  canvas.getContext('2d').calls.length = 0;
+  view.draw();
+  const after = drawn(canvas).find((text) => text.startsWith('±'));
+  assert.notEqual(after, before);
+  assert.ok(Number.parseFloat(after.slice(1)) < Number.parseFloat(before.slice(1)));
+});
+
+test('the plot stays put when filtered and raw samples swap places', () => {
+  const recording = wavy();
+  const { view } = viewOf(recording);
+  view.setView(0, 10, 1);
+  const raw = view.gutter;
+  view.setSignals(scaled(recording, 1000));
+  const filtered = view.gutter;
+  view.setSignals(recording.channels);
+  assert.equal(view.gutter, filtered);
+  assert.ok(filtered >= raw);
+});
+
+test('going back to samples drawn before measures nothing again', () => {
+  const recording = wavy();
+  const { view } = viewOf(recording);
+  const { baselines } = view;
+  const filtered = scaled(recording, 0.5);
+  view.setSignals(filtered);
+  const filteredBaselines = view.baselines;
+  view.setSignals(recording.channels);
+  assert.deepEqual(view.baselines, baselines);
+  assert.equal(view.baselines[0], baselines[0]);
+  view.setSignals(filtered);
+  assert.equal(view.baselines[0], filteredBaselines[0]);
+});

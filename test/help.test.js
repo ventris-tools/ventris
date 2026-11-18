@@ -64,3 +64,10 @@ test("has the section that the viewer's link help points to", () => {
   assert.equal(help.target, '_blank');
   assert.ok(document.getElementById('links'));
 });
+
+test('explains the display filter, and what it leaves as recorded', () => {
+  assert.ok(document.getElementById('filters'));
+  assert.match(text, /The file never changes/);
+  assert.match(text, /describe the file as recorded/);
+  assert.doesNotMatch(text, /doesn't filter/);
+});

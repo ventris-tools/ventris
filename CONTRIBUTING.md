@@ -36,6 +36,8 @@ npm run format:check
 
 `npm run coverage` fails if coverage falls below the floors in `package.json`. Raise the floors when coverage improves, so that it can't slip back.
 
+`test/support/scipy-filters.js` holds SciPy's answers for the display filters, which `test/filters.test.js` checks against. CI has no Python, so they're committed. To change a case, edit `test/support/scipy-filters.py` and rerun it as its header says.
+
 `npm test` runs the app in jsdom, which has no Content Security Policy, real canvas or form checks. `npm run test:browser` opens the pages in headless Chrome and fails on any error, blocked load or missing file. It finds Chrome in the usual places, or set `CHROME_PATH`, and skips without it except in CI.
 
 `npm run lint` checks the JavaScript with ESLint, the CSS with stylelint's recommended rules and the HTML with html-validate's. Stylelint's `no-descending-specificity` is off, since it flags selectors that never match the same element.
@@ -50,6 +52,8 @@ npm run format:check
 | `js/open-worker.js` | Reads a file in a worker, so the page stays responsive, and measures each channel's spread and baseline |
 | `js/channels.js` | Reads the kind of each channel from its label |
 | `js/dsp.js` | Computes power spectra, band shares and time statistics |
+| `js/filters.js` | Filters the traces for display: a high-pass, a low-pass and a mains notch |
+| `js/steps.js` | Holds the display's settings, in the order they apply, and their undo history |
 | `js/format.js` | Writes times and amounts for the interface |
 | `js/info.js` | Builds the rows of the details panel |
 | `js/remote.js` | Reads a link to a public recording on NEMAR or OpenNeuro, and downloads it |

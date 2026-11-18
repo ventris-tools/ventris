@@ -1,8 +1,10 @@
 import { DEMO_START, demoRecording } from './demo.js';
 import { BAND_RANGE, BANDS, bandShares, timeStats } from './dsp.js';
+import { filterRecording } from './filters.js';
 import { amount, count, decimalsFor, downloadProgress, formatClock } from './format.js';
 import { infoGroups, timeRows } from './info.js';
 import { download, LinkError, resolveLink } from './remote.js';
+import { describe, isOff, record, redo, startHistory, STEPS, undo } from './steps.js';
 import {
   clamp,
   eventColors,
@@ -28,6 +30,15 @@ const PROGRESS_DELAY = 150;
 
 // How long measuring bands can hold the page before it lets a frame through, in milliseconds.
 const BAND_SLICE = 10;
+
+// How long filtering can hold the page before it lets a frame through. Longer than for bands,
+// since every pause costs a few milliseconds of its own.
+const FILTER_SLICE = 20;
+
+const FILTER_PROBLEMS = {
+  large: 'too long to filter here',
+  memory: 'out of memory to filter',
+};
 
 const BAND_PROBLEMS = {
   'no-eeg': 'This recording has no EEG channels to measure.',
@@ -72,10 +83,18 @@ const annotationList = $('annotation-list');
 const timeSection = $('time-domain');
 const timeList = $('time-rows');
 const timeNote = $('time-note');
+const filterChoices = $('filter-choices');
+const rawButton = $('show-raw');
+const filterStatus = $('filter-status');
 
 // The window is the length chosen in the list, and length is how much is on screen, which a
 // zoom shortens. Rows are the channels a zoom keeps, or null for all of them. A zoom keeps
 // where its window started, to go back to.
+//
+// filters is the history of the display filter's settings, which carries over to the next
+// recording. processed is the recording filtered with them, once it's ready, and raw says the
+// reader has asked to see the samples as recorded instead. untouched counts the channels a
+// filter leaves alone, and problem says why a recording couldn't be filtered.
 const state = {
   recording: null,
   start: 0,
@@ -84,14 +103,23 @@ const state = {
   rows: null,
   zoom: null,
   gain: 1,
+  filters: startHistory(),
+  raw: false,
+  processed: null,
+  filtering: false,
+  untouched: 0,
+  problem: null,
 };
 let bandTimer = 0;
 let bandRun = 0;
 // What the band shares were last measured over, so that a change of trace size or of the
 // rows in view measures nothing again.
 let measured = {};
-// The recording whose time figures are shown, if any.
+// The recording whose time figures are shown, if any, and how many channels they cover.
 let timed = null;
+let timedChannels = null;
+// Counts filter runs, so that one overtaken by a newer change or recording gives up.
+let filterRun = 0;
 let progressTimer = 0;
 let openRequest = 0;
 let opening = false;
@@ -113,6 +141,22 @@ function showHover(hit, announce = false) {
 }
 
 const latestStart = () => Math.max(0, state.recording.duration - state.length);
+
+// The recording drawn: filtered once a filter is ready, unless the reader asked for raw.
+const onScreen = () => (state.raw || !state.processed ? state.recording : state.processed);
+
+// What the traces show, in a few words, or '' with every filter off.
+function filterText() {
+  const settings = state.filters.present;
+  if (isOff(settings)) return '';
+  if (state.problem) return `Raw · ${FILTER_PROBLEMS[state.problem]}`;
+  if (state.raw) return 'Raw · filter paused';
+  const label = describe(settings);
+  if (state.filtering) return `Filtering ${label}…`;
+  const unfiltered =
+    state.untouched > 0 ? ` · ${count(state.untouched, 'channel')} unfiltered` : '';
+  return `Filtered ${label}${unfiltered}`;
+}
 
 function moveTo(time) {
   const next = clamp(time, 0, latestStart());
@@ -137,6 +181,27 @@ function zoomTo(span, rows) {
 }
 
 const view = new TraceView(canvas, $('axis'), showHover, scrollTime, zoomTo);
+
+// One list for each filter setting, with Off first.
+const filterSelects = STEPS.map(({ key, label, choices }) => {
+  const choice = document.createElement('label');
+  const name = document.createElement('span');
+  const select = document.createElement('select');
+  choice.className = 'filter-choice';
+  name.textContent = label;
+  select.id = key;
+  select.append(
+    new Option('Off', ''),
+    ...choices.map((value) => new Option(`${value} Hz`, String(value))),
+  );
+  select.addEventListener('change', () => {
+    const value = select.value === '' ? null : Number(select.value);
+    changeFilters({ ...state.filters.present, [key]: value });
+  });
+  choice.append(name, select);
+  filterChoices.append(choice);
+  return { key, select };
+});
 
 // The list shows this while zoomed. It can't be chosen, so choosing any window ends the zoom.
 const zoomOption = new Option('Zoomed', 'zoomed');
@@ -191,16 +256,25 @@ function showDetails(recording) {
 }
 
 // The time figures read every sample in the file, which holds the page for a long recording,
-// and their section starts closed, so they wait until it's open.
+// and their section starts closed, so they wait until it's open. They describe the file, so
+// they say so while a filter changes what's drawn.
 function showTimes() {
   const { recording } = state;
   if (!timeSection.open || timed === recording) return;
   timed = recording;
   const stats = timeStats(recording.channels);
   fillRows(timeList, stats ? timeRows(stats) : []);
-  timeNote.textContent = stats
-    ? `Whole file · ${count(stats.channels, 'EEG channel')}`
-    : BAND_PROBLEMS['no-eeg'];
+  timedChannels = stats ? stats.channels : null;
+  showTimeNote();
+}
+
+function showTimeNote() {
+  if (timed !== state.recording) return;
+  const recorded = onScreen() === state.recording ? '' : ' · as recorded';
+  timeNote.textContent =
+    timedChannels === null
+      ? BAND_PROBLEMS['no-eeg']
+      : `Whole file · ${count(timedChannels, 'EEG channel')}${recorded}`;
 }
 
 function annotationButton({ time, text }, color) {
@@ -228,7 +302,7 @@ function showAnnotations({ annotations }, colors) {
   annotationList.replaceChildren(items);
 }
 
-function showBands({ shares, channels, reason }) {
+function showBands({ shares, channels, reason }, filtered) {
   bandRows.forEach(({ name, row, bar, value }, index) => {
     const share = shares ? shares[index] : 0;
     bar.hidden = !shares;
@@ -237,26 +311,36 @@ function showBands({ shares, channels, reason }) {
     row.title = shares ? `${name}: ${(share * 100).toFixed(1)}% of ${BAND_RANGE} power` : '';
   });
   bandNote.textContent = shares
-    ? `${BAND_RANGE} · ${count(channels, 'EEG channel')}`
+    ? `${BAND_RANGE} · ${count(channels, 'EEG channel')}${filtered ? ', filtered' : ''}`
     : BAND_PROBLEMS[reason];
 }
 
-// Keeps the page responsive however long the window is, and gives up if the view moves on.
-async function updateBands() {
-  const run = bandRun;
-  const { recording, start, length } = state;
-  const steps = bandShares(recording.channels, start, length);
+// Runs steps, a generator, a slice of time at a time, letting the page draw in between, and
+// gives up once isCurrent says the work is no longer wanted. Returns what the generator
+// returns, or undefined when it gave up.
+async function drain(steps, isCurrent, slice) {
   let sliceStart = performance.now();
   let step = steps.next();
   while (!step.done) {
-    if (performance.now() - sliceStart > BAND_SLICE) {
+    if (performance.now() - sliceStart > slice) {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      if (run !== bandRun) return;
+      if (!isCurrent()) return undefined;
       sliceStart = performance.now();
     }
     step = steps.next();
   }
-  showBands(step.value);
+  return step.value;
+}
+
+// Keeps the page responsive however long the window is, and gives up if the view moves on.
+// The bands measure what's drawn, filtered or not.
+async function updateBands() {
+  const run = bandRun;
+  const { start, length } = state;
+  const shown = onScreen();
+  const steps = bandShares(shown.channels, start, length);
+  const result = await drain(steps, () => run === bandRun, BAND_SLICE);
+  if (result) showBands(result, shown !== state.recording);
 }
 
 function showZoom() {
@@ -275,20 +359,25 @@ function refresh() {
   const text = `${formatClock(start, decimals)} to ${formatClock(end, decimals)}`;
   const total = count(recording.channels.length, 'channel');
   const shown = rows ? `${rows.count} of ${total}` : total;
-  const undo = zoom ? ' Escape undoes the zoom.' : '';
+  const zoomed = zoom ? ' Escape undoes the zoom.' : '';
+  const filter = filterText();
+  const filtered = filter
+    ? ` ${filter.replace(/…$/, '')}. R switches between filtered and raw.`
+    : '';
   positionText.textContent = text;
   position.setAttribute('aria-valuetext', text);
   canvas.setAttribute(
     'aria-label',
-    `Traces for ${shown}, from ${text}. Arrow keys read values, and Page Up and Page Down move a window at a time.${undo} Band shares are in the table.`,
+    `Traces for ${shown}, from ${text}.${filtered} Arrow keys read values, and Page Up and Page Down move a window at a time.${zoomed} Band shares are in the table.`,
   );
   showZoom();
   view.setView(start, length, gain, rows);
-  // Bands depend only on the recording and the stretch of it on screen.
-  if (measured.recording === recording && measured.start === start && measured.length === length) {
+  // Bands depend only on the samples drawn and the stretch of them on screen.
+  const drawn = onScreen();
+  if (measured.recording === drawn && measured.start === start && measured.length === length) {
     return;
   }
-  measured = { recording, start, length };
+  measured = { recording: drawn, start, length };
   clearTimeout(bandTimer);
   bandRun += 1;
   bandTimer = setTimeout(updateBands, 60);
@@ -334,8 +423,22 @@ function formatWindow(seconds, duration) {
 }
 
 // levels are the spreads and baselines of the channels, when the worker has measured them.
+// The display filter's settings carry over, so a new recording opens as recorded and is
+// filtered with them once that's ready.
 function show(recording, name, { start = 0, levels } = {}) {
-  Object.assign(state, { recording, start, gain: 1, rows: null, zoom: null });
+  filterRun += 1;
+  Object.assign(state, {
+    recording,
+    start,
+    gain: 1,
+    rows: null,
+    zoom: null,
+    raw: false,
+    processed: null,
+    filtering: !isOff(state.filters.present),
+    untouched: 0,
+    problem: null,
+  });
   viewer.hidden = false;
   demoOffer.hidden = recording.format === 'Synthetic';
   updateGainButtons();
@@ -356,6 +459,87 @@ function show(recording, name, { start = 0, levels } = {}) {
   );
   const preferred = choices.findLast((seconds) => seconds <= PREFERRED_WINDOW) ?? choices[0];
   setWindow(preferred);
+  showFilters();
+  if (state.filtering) applyFilters();
+}
+
+// The display filter's controls and status line, as the settings and the state of the
+// filtering stand.
+function showFilters() {
+  const settings = state.filters.present;
+  for (const { key, select } of filterSelects) {
+    select.value = settings[key] === null ? '' : String(settings[key]);
+  }
+  rawButton.disabled = isOff(settings);
+  rawButton.setAttribute('aria-pressed', String(state.raw));
+  const text = filterText();
+  filterStatus.textContent = text;
+  // A narrow screen cuts the line short, so pointing at it gives the whole of it.
+  filterStatus.title = text;
+  filterStatus.hidden = !text;
+  showTimeNote();
+}
+
+// Draws whichever samples are on screen now, and says so.
+function showSignals() {
+  view.setSignals(onScreen().channels);
+  showFilters();
+  refresh();
+}
+
+// Filters the recording with the current settings, a slice at a time, and draws the result
+// once it's ready. Until then, whatever was drawn stays. A newer change, or a new recording,
+// makes this run give up.
+async function applyFilters() {
+  filterRun += 1;
+  const run = filterRun;
+  const { recording } = state;
+  const settings = state.filters.present;
+  state.problem = null;
+  if (isOff(settings)) {
+    Object.assign(state, { processed: null, filtering: false, untouched: 0 });
+    showSignals();
+    return;
+  }
+  state.filtering = true;
+  showFilters();
+  refresh();
+  const steps = filterRecording(recording.channels, settings);
+  const result = await drain(steps, () => run === filterRun, FILTER_SLICE);
+  if (run !== filterRun) return;
+  Object.assign(state, {
+    processed: result.channels && { ...recording, channels: result.channels },
+    filtering: false,
+    untouched: result.untouched,
+    problem: result.reason,
+  });
+  showSignals();
+}
+
+// A new choice of filter is a step that can be undone. Choosing turns raw off, since the
+// reader wants to see what they chose.
+function changeFilters(settings) {
+  const history = record(state.filters, settings);
+  if (history === state.filters) return;
+  state.filters = history;
+  state.raw = false;
+  applyFilters();
+}
+
+// Undoes or redoes a change of filter, given undo or redo.
+function stepHistory(move) {
+  const history = move(state.filters);
+  if (history === state.filters) return;
+  state.filters = history;
+  state.raw = false;
+  applyFilters();
+}
+
+// Shows the samples as recorded, or the filtered ones again, without changing the filter.
+function toggleRaw() {
+  if (isOff(state.filters.present)) return;
+  state.raw = !state.raw;
+  showSignals();
 }
 
 function showDemo() {
@@ -548,6 +732,7 @@ position.addEventListener('input', () => {
 });
 windowSelect.addEventListener('change', () => setWindow(Number(windowSelect.value)));
 resetButton.addEventListener('click', resetZoom);
+rawButton.addEventListener('click', toggleRaw);
 timeSection.addEventListener('toggle', showTimes);
 canvas.addEventListener('dblclick', resetZoom);
 
@@ -560,6 +745,13 @@ tracePanel.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.zoom) {
     event.preventDefault();
     resetZoom();
+    return;
+  }
+  // R alone: with Cmd or Ctrl it reloads the page, which the browser should still do. Held
+  // down, it would flicker between the two.
+  if (event.key.toLowerCase() === 'r' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    event.preventDefault();
+    if (!event.repeat) toggleRaw();
     return;
   }
   const nudge = length / 10;
@@ -592,6 +784,15 @@ tracePanel.addEventListener(
   },
   { passive: false },
 );
+
+// Undo and redo step through the filter's settings, wherever the focus is, except in the
+// dialog, whose link field keeps them for its own text.
+document.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() !== 'z' || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+  if (loader.open || event.defaultPrevented) return;
+  event.preventDefault();
+  stepHistory(event.shiftKey ? redo : undo);
+});
 
 function changeGain(factor) {
   state.gain = clamp(state.gain * factor, ...GAIN_LIMITS);
