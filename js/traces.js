@@ -95,6 +95,16 @@ export function baseline(data, fs) {
   return { levels, block };
 }
 
+// The spread and baseline of each array of samples drawn so far, so that drawing one again,
+// as going back to the raw signal does, measures nothing again.
+const levels = new WeakMap();
+
+function levelsOf({ data, fs }) {
+  if (!levels.has(data))
+    levels.set(data, { spread: robustSpread(data), level: baseline(data, fs) });
+  return levels.get(data);
+}
+
 // The level at a sample, on a straight line between the middles of its nearest blocks.
 export function levelAt({ levels, block }, sample) {
   const place = sample / block - 0.5;
@@ -275,12 +285,15 @@ export class TraceView {
   // colors are those of eventColors, which the caller may already have for its own list.
   // spreads and baselines are those of robustSpread and baseline for each channel, which read
   // every sample, so the worker that opens a file measures them there and sends them along.
-  setRecording(recording, colors = eventColors(recording.annotations), levels = {}) {
+  setRecording(recording, colors = eventColors(recording.annotations), measured = {}) {
     const { channels } = recording;
     this.recording = recording;
     this.events = recording.annotations.map((event, index) => ({ ...event, color: colors[index] }));
-    this.spreads = levels.spreads ?? channels.map(({ data }) => robustSpread(data));
-    this.baselines = levels.baselines ?? channels.map(({ data, fs }) => baseline(data, fs));
+    this.spreads = measured.spreads ?? channels.map(({ data }) => robustSpread(data));
+    this.baselines = measured.baselines ?? channels.map(({ data, fs }) => baseline(data, fs));
+    channels.forEach(({ data }, row) => {
+      levels.set(data, { spread: this.spreads[row], level: this.baselines[row] });
+    });
     this.firstRow = 0;
     this.rowCount = recording.channels.length;
     this.cursor = null;
@@ -289,6 +302,21 @@ export class TraceView {
     this.measure();
     // Not a draw yet: the window it would show belongs to the last recording. setView draws.
     this.layout();
+  }
+
+  // Draws other samples for the same channels, such as filtered ones, and leaves the window,
+  // the rows, the scroll and the cursor as they are. The cursor reads its new value quietly,
+  // since nothing the reader did moved it.
+  setSignals(channels) {
+    this.recording = { ...this.recording, channels };
+    const found = channels.map(levelsOf);
+    this.spreads = found.map(({ spread }) => spread);
+    this.baselines = found.map(({ level }) => level);
+    // The gutter only widens, so switching between filtered and raw doesn't shift the plot.
+    this.measure(this.gutter);
+    this.layout();
+    if (this.cursor) this.report(false);
+    this.schedule();
   }
 
   // How many rows a redraw can draw at most, with every channel in view.
@@ -355,8 +383,8 @@ export class TraceView {
   }
 
   // The gutter holds the row labels. It is wide enough at any trace size, so the plot does
-  // not shift when the size changes, and it depends only on the recording and the font.
-  measure() {
+  // not shift when the size changes, and at least as wide as narrowest.
+  measure(narrowest = 0) {
     const { context } = this;
     const { channels } = this.recording;
     context.font = this.font(LABEL_SIZE);
@@ -365,7 +393,7 @@ export class TraceView {
     const ranges = channels.flatMap((_, row) =>
       GAIN_LIMITS.map((gain) => context.measureText(this.rangeText(row, gain)).width),
     );
-    this.gutter = Math.ceil(Math.max(...labels, ...ranges)) + 20;
+    this.gutter = Math.max(narrowest, Math.ceil(Math.max(...labels, ...ranges)) + 20);
   }
 
   // The canvas covers the rows in view and as much again around them, so it stays the same

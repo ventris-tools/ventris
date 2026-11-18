@@ -179,6 +179,18 @@ input[type="range"] {
 
 .position-text { color: var(--ink-2); font-size: var(--text-sm); line-height: 1; white-space: nowrap; }
 
+/* Says in words whenever the traces aren't the samples as recorded, so a filter left on
+   can't be forgotten. */
+.filter-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -376,6 +388,23 @@ select {
 
 .stepper { display: flex; gap: 6px; }
 .stepper .button { flex: 1; min-height: 34px; padding: 0; font-size: var(--text-lg); }
+
+.filter-choices { display: grid; gap: 6px; }
+
+/* Wide enough for "High-pass", the longest name, so every list starts at the same place. */
+.filter-choice {
+  display: grid;
+  grid-template-columns: 9ch minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-choice select { padding: 0 4px; font-size: var(--text-sm); }
+
+.show-raw { min-height: 34px; margin-top: 2px; padding: 0 8px; font-size: var(--text-sm); }
+
+/* Pressed, it turns dark, and its aria-pressed state and the status line say so too. */
+.show-raw[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
 
 table { width: 100%; margin-top: 6px; border-collapse: collapse; }
 
@@ -699,6 +728,10 @@ kbd {
   .masthead { flex: 1 1 calc(100% - 152px); }
   .open-recording { flex: none; width: 140px; }
   .panel-controls .control { flex: 1 1 40%; }
+  .panel-controls .filter-controls { flex-basis: 100%; }
+  .filter-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .filter-choice { grid-template-columns: none; gap: 4px; }
+  .show-raw { min-height: 44px; }
 
   .site-footer {
     flex-flow: row wrap;

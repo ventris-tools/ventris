@@ -711,3 +711,212 @@ test('sideways wheel movement scrolls time and takes the event', () => {
   assert.ok(Number($('position').value) > 0);
   assert.equal(event.defaultPrevented, true);
 });
+
+// The display filter's tests come last, since the page is shared and a filter carries over to
+// every recording opened after it. The last of them turns every filter off again.
+
+function choose(key, value) {
+  const select = $(key);
+  select.value = value;
+  select.dispatchEvent(new window.Event('change', { bubbles: true }));
+}
+
+const pressWith = (target, key, init) =>
+  target.dispatchEvent(
+    new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+  );
+
+const status = () => $('filter-status');
+const settled = () => until(() => /^(?:Filtered|Raw)/.test(status().textContent));
+// The value under the cursor. The readout writes a minus sign, which parseFloat doesn't read.
+const reading = () =>
+  Number.parseFloat($('readout').textContent.split(' · ').at(-1).replace('−', '-'));
+
+// An offset of 50 µV with a 10 Hz rhythm on it, which a high-pass brings down to the rhythm.
+const offsetEdf = () =>
+  buildEdf(
+    [
+      {
+        label: 'Cz',
+        samples: 256,
+        value: (record, i) => 500 + Math.round(300 * Math.sin((2 * Math.PI * 10 * i) / 256)),
+      },
+      { label: 'Resp chest', samples: 256, value: (record, i) => i },
+    ],
+    { records: 30 },
+  );
+
+test('offers a display filter with every setting off, and nothing to switch back from', async () => {
+  await open('offset.edf', offsetEdf());
+  assert.deepEqual(
+    [...$('highpass').options].map((option) => option.textContent),
+    ['Off', '0.1 Hz', '0.5 Hz', '1 Hz', '2 Hz'],
+  );
+  assert.deepEqual(
+    ['highpass', 'lowpass', 'notch'].map((key) => $(key).value),
+    ['', '', ''],
+  );
+  assert.equal($('show-raw').disabled, true);
+  assert.equal(status().hidden, true);
+  assert.doesNotMatch($('traces').getAttribute('aria-label'), /filter/i);
+});
+
+test('a filter changes what is drawn and measured, and says so', async () => {
+  $('traces').focus();
+  press($('traces'), 'ArrowRight');
+  const raw = reading();
+  assert.ok(raw > 20, `read ${raw}`);
+
+  choose('highpass', '1');
+  await settled();
+  assert.equal(status().hidden, false);
+  assert.equal(status().textContent, 'Filtered 1 Hz high-pass · 1 channel unfiltered');
+  assert.ok(Math.abs(reading()) < 31, `read ${reading()}`);
+  assert.equal($('show-raw').disabled, false);
+  assert.match(
+    $('traces').getAttribute('aria-label'),
+    /^Traces for 2 channels, from [^.]+\. Filtered 1 Hz high-pass · 1 channel unfiltered\. R switches between filtered and raw\./,
+  );
+  await until(() => $('band-note').textContent.endsWith(', filtered'));
+  assert.equal($('band-note').textContent, '1 to 30 Hz · 1 EEG channel, filtered');
+  await openTimes();
+  assert.equal($('time-note').textContent, 'Whole file · 1 EEG channel · as recorded');
+});
+
+test('shows the raw signal from its button or R, and leaves Cmd+R to the browser', async () => {
+  const filtered = reading();
+  $('show-raw').click();
+  assert.equal($('show-raw').getAttribute('aria-pressed'), 'true');
+  assert.equal(status().textContent, 'Raw · filter paused');
+  assert.ok(reading() > 20);
+  assert.equal($('time-note').textContent, 'Whole file · 1 EEG channel');
+  await until(() => !$('band-note').textContent.endsWith(', filtered'));
+
+  pressWith($('traces'), 'r', { repeat: true });
+  assert.equal(status().textContent, 'Raw · filter paused');
+  press($('traces'), 'R');
+  assert.equal($('show-raw').getAttribute('aria-pressed'), 'false');
+  assert.equal(reading(), filtered);
+
+  const reload = new window.KeyboardEvent('keydown', {
+    key: 'r',
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  $('traces').dispatchEvent(reload);
+  assert.equal(reload.defaultPrevented, false);
+  assert.equal($('show-raw').getAttribute('aria-pressed'), 'false');
+});
+
+test('choosing a filter while raw shows the new filter', async () => {
+  $('show-raw').click();
+  choose('notch', '50');
+  assert.equal($('show-raw').getAttribute('aria-pressed'), 'false');
+  await settled();
+  assert.equal(
+    status().textContent,
+    'Filtered 1 Hz high-pass · 50 Hz notch · 1 channel unfiltered',
+  );
+});
+
+test('undoes and redoes filter changes from the keyboard, but not in the dialog', async () => {
+  pressWith(document.body, 'z', { ctrlKey: true });
+  await settled();
+  assert.equal($('notch').value, '');
+  assert.equal($('highpass').value, '1');
+  pressWith(document.body, 'z', { metaKey: true });
+  await until(() => status().hidden);
+  assert.equal($('highpass').value, '');
+  assert.equal($('show-raw').disabled, true);
+  assert.equal($('time-note').textContent, 'Whole file · 1 EEG channel');
+
+  pressWith(document.body, 'Z', { ctrlKey: true, shiftKey: true });
+  await settled();
+  assert.equal($('highpass').value, '1');
+
+  $('open-recording').click();
+  pressWith($('link-input'), 'z', { ctrlKey: true });
+  assert.equal($('highpass').value, '1');
+  $('close-loader').click();
+
+  // A new choice after an undo forgets what could be redone, and Alt turns undo off.
+  choose('notch', '60');
+  await settled();
+  pressWith(document.body, 'z', { ctrlKey: true, shiftKey: true });
+  assert.equal($('notch').value, '60');
+  pressWith(document.body, 'z', { ctrlKey: true, altKey: true });
+  assert.equal($('notch').value, '60');
+  pressWith(document.body, 'z', { ctrlKey: true });
+  await settled();
+  assert.equal($('notch').value, '');
+
+  // Choosing what's already chosen is no change at all.
+  choose('highpass', '1');
+  assert.equal(status().textContent, 'Filtered 1 Hz high-pass · 1 channel unfiltered');
+});
+
+test('carries the filter over to the next recording, which opens raw until it is filtered', async () => {
+  await open('next.edf', offsetEdf());
+  assert.equal($('recording-name').textContent, 'next.edf');
+  await settled();
+  assert.equal(status().textContent, 'Filtered 1 Hz high-pass · 1 channel unfiltered');
+  assert.equal($('highpass').value, '1');
+});
+
+test('only the latest change of filter is drawn, however the runs overlap', async (t) => {
+  // A clock that races, so that filtering pauses after every stretch it filters.
+  let now = 0;
+  t.mock.method(performance, 'now', () => (now += 100));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const seen = [];
+  const observer = new window.MutationObserver(() => seen.push(status().textContent));
+  observer.observe(status(), { childList: true, characterData: true, subtree: true });
+  // Each tick lets a paused run, or the worker opening a file, carry on a step.
+  const runTimers = async () => {
+    for (let i = 0; i < 60; i += 1) {
+      t.mock.timers.tick(100);
+      for (let hop = 0; hop < 5; hop += 1) await Promise.resolve();
+    }
+  };
+
+  choose('highpass', '2');
+  assert.equal(status().textContent, 'Filtering 2 Hz high-pass…');
+  choose('highpass', '0.5');
+  // A new recording overtakes both, and is filtered with the latest choice.
+  drop(fileOf('later.edf', offsetEdf()));
+  await runTimers();
+  assert.equal($('recording-name').textContent, 'later.edf');
+  observer.disconnect();
+  assert.equal(status().textContent, 'Filtered 0.5 Hz high-pass · 1 channel unfiltered');
+  assert.ok(!seen.includes('Filtered 2 Hz high-pass · 1 channel unfiltered'));
+});
+
+test('shows the raw signal and says why when memory runs out', () => {
+  const { Float64Array } = globalThis;
+  globalThis.Float64Array = class extends Float64Array {
+    constructor() {
+      throw new RangeError('Array buffer allocation failed');
+    }
+  };
+  try {
+    choose('lowpass', '30');
+  } finally {
+    globalThis.Float64Array = Float64Array;
+  }
+  return settled().then(() => {
+    assert.equal(status().textContent, 'Raw · out of memory to filter');
+    // The recording opened last cleared the cursor, so it goes back on the trace.
+    press($('traces'), 'ArrowRight');
+    assert.ok(reading() > 20, `read ${reading()}`);
+  });
+});
+
+test('turning every filter off shows the recording as it is', async () => {
+  for (const key of ['highpass', 'lowpass', 'notch']) choose(key, '');
+  await until(() => status().hidden);
+  assert.equal($('show-raw').disabled, true);
+  assert.ok(reading() > 20);
+  press($('traces'), 'r');
+  assert.equal($('show-raw').getAttribute('aria-pressed'), 'false');
+});

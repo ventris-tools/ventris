@@ -19,12 +19,14 @@
   <link rel="modulepreload" href="js/demo.js">
   <link rel="modulepreload" href="js/dsp.js">
   <link rel="modulepreload" href="js/edf.js">
+  <link rel="modulepreload" href="js/filters.js">
   <link rel="modulepreload" href="js/format.js">
   <link rel="modulepreload" href="js/info.js">
   <link rel="modulepreload" href="js/md5.js">
   <link rel="modulepreload" href="js/open-worker.js">
   <link rel="modulepreload" href="js/recording.js">
   <link rel="modulepreload" href="js/remote.js">
+  <link rel="modulepreload" href="js/steps.js">
   <link rel="modulepreload" href="js/traces.js">
   <link rel="stylesheet" href="styles.css">
   <script src="js/theme.js"></script>
@@ -69,6 +71,12 @@
         </div>
       </div>
 
+      <div class="control filter-controls" role="group" aria-labelledby="filter-label">
+        <span id="filter-label">Display filter</span>
+        <div class="filter-choices" id="filter-choices"></div>
+        <button class="button show-raw" id="show-raw" type="button" aria-pressed="false" disabled>Show raw</button>
+      </div>
+
       <button class="button reset-zoom" id="reset-zoom" type="button" hidden>Reset zoom</button>
     </aside>
 
@@ -81,6 +89,7 @@
         <label class="visually-hidden" for="position">Position in the recording</label>
         <input id="position" type="range" min="0" step="any" value="0">
         <span class="position-text" id="position-text"></span>
+        <span class="filter-status" id="filter-status" hidden></span>
       </div>
     </section>
 

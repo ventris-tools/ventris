@@ -14,7 +14,7 @@ Open an EDF, EDF+ or CSV file to see its signals, frequency bands, annotations a
 
 Ventris is the quick look before MNE-Python, EEGLAB or FieldTrip: what's in this file, and is it any good?
 
-- **Check a session while you can still redo it.** Spot flat channels, noisy channels and artifacts.
+- **Check a session while you can still redo it.** Spot flat channels, noisy channels and artifacts. A display filter looks past drift and mains hum, and never changes the file.
 - **Size up a dataset you didn't record.** Read its sample rate, channels, filters and duration before you write any code. EDF header fields follow MNE-Python's reader, so they usually match `mne.io.read_raw_edf`.
 - **Find your events.** Jump between annotations and check that they line up with the signal.
 - **Browse public datasets.** Open a recording from a NEMAR dataset by its GitHub link, with nothing to download or clone.
@@ -46,7 +46,7 @@ Ventris is an early preview. It's a research tool, not a medical device.
 
 - BDF files aren't supported yet.
 - A CSV file needs a header row and a column of times.
-- It doesn't filter, re-reference or export signals.
+- It doesn't re-reference or export signals.
 - The whole file is read into memory, so a very large recording may not open.
 
 Live streaming from EEG headsets is next. If Ventris is missing something you need, [open an issue](https://github.com/ventris-tools/ventris/issues).

@@ -52,6 +52,7 @@
           <li><a href="#traces">Read the traces</a></li>
           <li><a href="#moving">Move through</a></li>
           <li><a href="#zoom">Zoom in</a></li>
+          <li><a href="#filters">Display filter</a></li>
           <li><a href="#keyboard">Keyboard</a></li>
         </ul>
       </div>
@@ -132,7 +133,7 @@
     <h2 id="traces">Read the traces</h2>
     <p>Each row is one channel. The ± figure under a channel's name is how far that row reaches either side of its middle.</p>
     <p>Each row has its own ± range, so compare shapes rather than heights.</p>
-    <p>Point at a trace to read the recorded value at that moment.</p>
+    <p>Point at a trace to read its value at that moment. With a display filter on, that's the filtered value.</p>
 
     <h2 id="moving">Move through a recording</h2>
     <table>
@@ -150,8 +151,24 @@
     <p>While you're zoomed, the slider, swipes and keys move through time as usual, and the Window list says Zoomed.</p>
     <p>Double-click the traces, press <kbd>Escape</kbd> or select Reset zoom to see the whole window and every channel again. If you haven't moved, you're back where you started.</p>
 
+    <h2 id="filters">Display filter</h2>
+    <p>The Display filter lists filter the traces as they're drawn. The file never changes, and the line under the traces says which filters are on.</p>
+    <table>
+      <tbody>
+        <tr><th scope="row">High-pass</th><td>Takes out offsets and slow drift below the frequency you choose.</td></tr>
+        <tr><th scope="row">Low-pass</th><td>Takes out fast activity above the frequency you choose, such as muscle. EMG channels keep theirs, since that's what they measure.</td></tr>
+        <tr><th scope="row">Notch</th><td>Takes out mains hum at 50 or 60 Hz, though not its harmonics.</td></tr>
+        <tr><th scope="row">Show raw</th><td>Draws the samples as recorded, to compare. Select it again, or press <kbd>R</kbd>, to go back to the filtered traces.</td></tr>
+      </tbody>
+    </table>
+    <p>Each filter runs forwards and then backwards, so nothing shifts in time and peaks stay under their annotations. Running twice halves the signal at the cutoff frequency, as MNE-Python's IIR filters do. The high-pass and low-pass are second-order Butterworth filters, and the notch is the one SciPy's <code>iirnotch</code> makes, with a Q of 30.</p>
+    <p>Channels from sensors, such as triggers, breathing belts and oximeters, stay as recorded, and the line under the traces says how many. A filter too close to half a channel's sample rate is left out for that channel.</p>
+    <p>The traces, their ± figures, the value you point at and the frequency bands follow the filter. The time domain figures and Info describe the file as recorded.</p>
+    <p>Filters stay on when you open another recording. Undo a change of filter with <kbd>Ctrl</kbd> <kbd>Z</kbd>, or <kbd>Cmd</kbd> <kbd>Z</kbd> on a Mac, and redo it by adding <kbd>Shift</kbd>.</p>
+    <p>Gaps in a recording are filtered as if they weren't there, so a filter can ring for a few seconds after one. A recording with more than 150 million samples to filter stays raw.</p>
+
     <h2 id="keyboard">Keyboard</h2>
-    <p>Select the traces or the slider first.</p>
+    <p>Select the traces or the slider first, except to undo.</p>
     <table>
       <tbody>
         <tr><th scope="row"><kbd>Page Up</kbd> <kbd>Page Down</kbd></th><td>Move one window later or earlier.</td></tr>
@@ -159,6 +176,8 @@
         <tr><th scope="row">Arrow keys on the traces</th><td>Move the cursor to read values: left and right through time, up and down between channels.</td></tr>
         <tr><th scope="row">Arrow keys on the slider</th><td>Move a tenth of a window.</td></tr>
         <tr><th scope="row"><kbd>Escape</kbd></th><td>Undo a zoom.</td></tr>
+        <tr><th scope="row"><kbd>R</kbd></th><td>Switch between the filtered and the raw traces.</td></tr>
+        <tr><th scope="row"><kbd>Ctrl</kbd> <kbd>Z</kbd></th><td>Undo a change of filter, from anywhere on the page. Add <kbd>Shift</kbd> to redo. On a Mac, use <kbd>Cmd</kbd>.</td></tr>
       </tbody>
     </table>
 
@@ -166,13 +185,14 @@
     <p>Each bar is one band's share of the 1 to 30 Hz power in the window on screen, from Welch spectra averaged across the EEG channels. The bars update as you move.</p>
     <p>The line under the bars gives that range and how many channels were averaged. Point at a row for a more exact figure.</p>
     <p>Only EEG channels sampled at 64 Hz or faster are measured. If bands can't be measured, the line says why.</p>
+    <p>With a display filter on, the bands measure the filtered traces, and the line says so.</p>
 
     <h2 id="annotations">Annotations</h2>
     <p>Annotations in an EDF+ file, and events in a CSV file, appear on the time axis. Select one in the list to jump to it.</p>
     <p>The four commonest kinds of annotation each get a colour, on the traces and in the list. The colours stay apart for colour-blind readers too. Any further kinds are grey, and every annotation keeps its name.</p>
 
     <h2 id="time-domain">Time domain</h2>
-    <p>These figures cover the whole recording, pooled across the EEG channels. The line under them says how many. EEG channels in a different unit from the first one are left out.</p>
+    <p>These figures cover the whole recording as recorded, pooled across the EEG channels. The line under them says how many, and says "as recorded" while a display filter is on. EEG channels in a different unit from the first one are left out.</p>
     <table>
       <tbody>
         <tr><th scope="row">Overall SD</th><td>The standard deviation of all those samples together.</td></tr>
@@ -192,7 +212,7 @@
     <ul>
       <li>Ventris is a research tool, not a medical device.</li>
       <li>BDF files aren't supported yet.</li>
-      <li>It doesn't filter, re-reference or export signals.</li>
+      <li>It doesn't re-reference or export signals.</li>
     </ul>
 
     <h2 id="source">Source code</h2>
