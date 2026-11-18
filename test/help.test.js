@@ -70,4 +70,6 @@ test('explains the display filter, and what it leaves as recorded', () => {
   assert.match(text, /The file never changes/);
   assert.match(text, /describe the file as recorded/);
   assert.doesNotMatch(text, /doesn't filter/);
+  assert.doesNotMatch(text, /re-reference or export/);
+  assert.match(text, /C3−lap/);
 });

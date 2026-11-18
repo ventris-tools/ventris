@@ -727,7 +727,8 @@ const pressWith = (target, key, init) =>
   );
 
 const status = () => $('filter-status');
-const settled = () => until(() => /^(?:Filtered|Raw)/.test(status().textContent));
+// Filtering is done once the status line stops saying it's under way.
+const settled = () => until(() => !status().textContent.endsWith('…'));
 // The value under the cursor. The readout writes a minus sign, which parseFloat doesn't read.
 const reading = () =>
   Number.parseFloat($('readout').textContent.split(' · ').at(-1).replace('−', '-'));
@@ -912,11 +913,57 @@ test('shows the raw signal and says why when memory runs out', () => {
   });
 });
 
-test('turning every filter off shows the recording as it is', async () => {
+// Three EEG channels in a row, and an eye channel no montage mixes in.
+const montageEdf = () =>
+  buildEdf(
+    ['C3', 'Cz', 'C4', 'EOG left'].map((label, k) => ({
+      label,
+      samples: 256,
+      value: (record, i) => Math.round(200 * Math.sin((2 * Math.PI * (k + 3) * i) / 256)),
+    })),
+    { records: 30 },
+  );
+
+test('a montage re-references the EEG channels, marks the rows it changes and says so', async () => {
   for (const key of ['highpass', 'lowpass', 'notch']) choose(key, '');
+  await open('montage.edf', montageEdf());
+  assert.deepEqual(
+    [...$('montage').options].map((option) => option.textContent),
+    ['Off', 'Average', 'Laplacian'],
+  );
+
+  choose('montage', 'laplacian');
+  assert.equal(status().textContent, 'Applying Laplacian…');
+  await settled();
+  // Only Cz has two neighbours here, C3 and C4, so it alone becomes a Laplacian.
+  assert.equal(status().textContent, 'Laplacian · 2 EEG channels not re-referenced');
+  press($('traces'), 'ArrowRight');
+  press($('traces'), 'ArrowDown');
+  assert.match($('readout').textContent, / · Cz−lap · /);
+
+  choose('montage', 'average');
+  await settled();
+  assert.equal(status().textContent, 'Average reference');
+  assert.match($('readout').textContent, / · Cz−avg · /);
+
+  choose('highpass', '1');
+  assert.equal(status().textContent, 'Filtering 1 Hz high-pass · average reference…');
+  await settled();
+  assert.equal(status().textContent, 'Filtered 1 Hz high-pass · average reference');
+
+  pressWith(document.body, 'z', { ctrlKey: true });
+  await settled();
+  assert.equal(status().textContent, 'Average reference');
+  $('show-raw').click();
+  assert.match($('readout').textContent, / · Cz · /);
+  $('show-raw').click();
+});
+
+test('turning every filter off shows the recording as it is', async () => {
+  for (const key of ['highpass', 'lowpass', 'notch', 'montage']) choose(key, '');
   await until(() => status().hidden);
   assert.equal($('show-raw').disabled, true);
-  assert.ok(reading() > 20);
+  assert.match($('readout').textContent, / · Cz · /);
   press($('traces'), 'r');
   assert.equal($('show-raw').getAttribute('aria-pressed'), 'false');
 });
