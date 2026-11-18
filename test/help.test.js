@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import { BAND_RANGE } from '../js/dsp.js';
+import { AFTER, BEFORE, DURING } from '../js/erd.js';
 
 // Help lives in a folder of its own, so that its address is help/ rather than help.html.
 const page = new URL('../help/index.html', import.meta.url);
@@ -24,6 +25,13 @@ test('explains how to zoom and how to undo it', () => {
 
 test('names the band range the viewer measures', () => {
   assert.ok(text.includes(`${BAND_RANGE} power`));
+});
+
+test('explains event-related power, and that it averages one file at a time', () => {
+  assert.ok(document.getElementById('event-power'));
+  assert.ok(text.includes(`from ${BEFORE} s before its onset to ${AFTER} s after`));
+  assert.ok(text.includes(`mean from ${DURING[0]} to ${DURING[1]} s after the onset`));
+  assert.match(text, /averages only that file's events/);
 });
 
 test('runs nothing but the theme, which it shares with the viewer', () => {

@@ -599,7 +599,7 @@ export class TraceView {
     const channel = this.recording.channels[row];
     const index = Math.min(channel.data.length - 1, Math.round(time * channel.fs));
     this.onHover(
-      { time, channel, value: channel.data[index], spread: this.spreads[row] },
+      { time, channel, row, value: channel.data[index], spread: this.spreads[row] },
       announce,
     );
   }

@@ -292,6 +292,28 @@ test(
   },
 );
 
+// The chart is drawn as SVG, with each curve's colour set through the CSS object model, which
+// the policy has to let through.
+test('charts event-related power in the annotation colours', { skip }, async () => {
+  await tab.evaluate(`(() => {
+    document.getElementById('event-power').open = true;
+    const input = document.getElementById('power-channels');
+    input.value = 'O1';
+    input.dispatchEvent(new Event('input'));
+  })()`);
+  await tab.until(`document.querySelectorAll('#power-charts polyline').length === 2`);
+  const chart = await tab.evaluate(`(() => {
+    const box = document.querySelector('.power-chart').getBoundingClientRect();
+    const strokes = [...document.querySelectorAll('#power-charts polyline')].map(
+      (line) => getComputedStyle(line).stroke,
+    );
+    return { width: box.width, height: box.height, strokes };
+  })()`);
+  assert.ok(chart.width > 150 && chart.height > 60, JSON.stringify(chart));
+  assert.deepEqual(chart.strokes, ['rgb(0, 144, 223)', 'rgb(194, 85, 0)']);
+  assert.deepEqual(await tab.problems(), []);
+});
+
 test('the link field takes an address written without https://', { skip }, async () => {
   const valid = await tab.evaluate(`(() => {
     const input = document.getElementById('link-input');

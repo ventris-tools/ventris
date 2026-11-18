@@ -705,6 +705,7 @@ test('pointing in a zoom reads the channel under the pointer', () => {
   assert.equal(hits.at(-1).hit.channel.label, 'C3');
   pointer(view, canvas, 'pointermove', [100, 350]);
   assert.equal(hits.at(-1).hit.channel.label, 'C4');
+  assert.equal(hits.at(-1).hit.row, 3);
   assert.equal(canvas.previousElementSibling.style.top, '300px');
 });
 

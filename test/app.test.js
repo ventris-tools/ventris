@@ -967,3 +967,259 @@ test('turning every filter off shows the recording as it is', async () => {
   press($('traces'), 'r');
   assert.equal($('show-raw').getAttribute('aria-pressed'), 'false');
 });
+
+// Event-related power. Left and Right alternate every 6 s, and a 10 Hz rhythm halves from
+// 0.5 to 3.5 s after each Left at C4 and after each Right at C3, as imagined fists do. The
+// last Right and End come too late for a whole epoch, and Pz is too slow for the bands.
+const LEFT = [3, 15, 27, 39];
+const RIGHT = [9, 21, 33, 45, 50];
+const imageryEdf = ({ left = 'Left', right = 'Right' } = {}) => {
+  const halved = (onsets, time) =>
+    onsets.some((onset) => time >= onset + 0.5 && time < onset + 3.5);
+  const rhythm = (label, onsets) => ({
+    label,
+    samples: 160,
+    value: (record, i) =>
+      Math.round(
+        (halved(onsets, record + i / 160) ? 400 : 800) * Math.sin((2 * Math.PI * 10 * i) / 160),
+      ),
+  });
+  const marks = [
+    ...LEFT.map((time) => [time, left]),
+    ...RIGHT.map((time) => [time, right]),
+    [51, 'End'],
+  ];
+  const tal = (record) =>
+    `+${record}\x14\x14\0${marks
+      .filter(([time]) => time === record)
+      .map(([time, text]) => `+${time}\x154.1\x14${text}\x14\0`)
+      .join('')}`;
+  return buildEdf(
+    [
+      rhythm('C3', RIGHT),
+      rhythm('C4', LEFT),
+      { label: 'Pz', samples: 50, value: () => 0 },
+      { label: 'EDF Annotations', samples: 40, tal },
+    ],
+    { records: 52, reserved: 'EDF+C' },
+  );
+};
+
+const powerNote = () => $('power-note').textContent;
+const figures = () => [...$('power-charts').querySelectorAll('figure')];
+const captions = () => figures().map((figure) => figure.querySelector('figcaption').textContent);
+// Each kind's row in a chart's key: its name, its events and its figure.
+const keyOf = (figure) =>
+  [...figure.querySelectorAll('tbody tr')].map((row) =>
+    [...row.cells].map(({ textContent }) => textContent),
+  );
+const decibels = (text) => Number.parseFloat(text.replace('−', '-'));
+const kindBoxes = () => [...$('power-kinds').querySelectorAll('input')];
+
+function nameChannels(text) {
+  $('power-channels').value = text;
+  $('power-channels').dispatchEvent(new window.Event('input'));
+}
+
+test('event-related power stays hidden for a recording without annotations', () => {
+  assert.equal($('recording-name').textContent, 'montage.edf');
+  assert.equal($('event-power').hidden, true);
+});
+
+test('event-related power offers each kind of annotation, closed until asked for', async (t) => {
+  const replace = t.mock.method($('power-kinds'), 'replaceChildren');
+  await open('imagery.edf', imageryEdf());
+  // Every annotation can be a kind of its own, too many to pass as arguments.
+  assert.equal(replace.mock.calls.at(-1).arguments.length, 1);
+  assert.equal($('event-power').hidden, false);
+  assert.equal($('event-power').open, false);
+  assert.deepEqual(
+    [...$('power-kinds').querySelectorAll('label')].map((label) => [
+      label.textContent,
+      label.style.getPropertyValue('--event'),
+      label.querySelector('input').checked,
+    ]),
+    [
+      ['Left', 'var(--event-2)', true],
+      ['Right', 'var(--event-1)', true],
+      ['End', 'var(--event-3)', true],
+    ],
+  );
+  assert.deepEqual(
+    [...$('power-band').options].map(({ textContent }) => textContent),
+    ['8 to 30 Hz', 'Mu 8 to 13 Hz', 'Beta 13 to 30 Hz'],
+  );
+  assert.deepEqual(
+    [...$('power-baseline').options].map(({ textContent }) => textContent),
+    ['1 s before', 'Left', 'Right', 'End'],
+  );
+  assert.equal($('power-channels').placeholder, "Cursor's row");
+
+  $('event-power').open = true;
+  await until(() => powerNote() !== '');
+  assert.equal(powerNote(), 'Point at a channel on the traces, or name channels here.');
+  assert.equal(figures().length, 0);
+});
+
+test('event-related power averages the events at the channels named', async () => {
+  nameChannels('C3 C4');
+  await until(() => figures().length === 2);
+  assert.deepEqual(captions(), ['C3', 'C4']);
+  assert.equal(powerNote(), 'From the traces as recorded');
+  const [c3, c4] = figures().map(keyOf);
+  assert.deepEqual(
+    c4.map(([kind, events]) => [kind, events]),
+    [
+      ['Left', '4'],
+      ['Right', '4'],
+      ['End', '0'],
+    ],
+  );
+  // The rhythm halves for the whole of 0.5 to 3.5 s, bar the smoothing at either end.
+  assert.ok(Math.abs(decibels(c4[0][2]) + 5.5) < 0.2, c4[0][2]);
+  assert.ok(Math.abs(decibels(c4[1][2])) < 0.2, c4[1][2]);
+  assert.ok(Math.abs(decibels(c3[0][2])) < 0.2, c3[0][2]);
+  assert.ok(Math.abs(decibels(c3[1][2]) + 5.5) < 0.2, c3[1][2]);
+  assert.equal(c4[2][2], '–');
+  assert.deepEqual(
+    [...figures()[1].querySelectorAll('thead th')].map(({ textContent }) => textContent),
+    ['Kind', 'Events', '0.5 to 3.5 s'],
+  );
+
+  // Each curve has the colour of its annotations and dashes of its own, in the key as well.
+  const lines = [...figures()[1].querySelectorAll('polyline')];
+  assert.equal(lines.length, 2);
+  assert.deepEqual(
+    lines.map((line) => [
+      line.style.getPropertyValue('--event'),
+      line.getAttribute('stroke-dasharray'),
+    ]),
+    [
+      ['var(--event-2)', 'none'],
+      ['var(--event-1)', '6 3'],
+    ],
+  );
+  const swatches = [...figures()[1].querySelectorAll('.power-swatch line')];
+  assert.deepEqual(
+    swatches.map((line) => line.getAttribute('stroke-dasharray')),
+    ['none', '6 3', '2 2'],
+  );
+  const labels = [...figures()[1].querySelectorAll('text')].map(({ textContent }) => textContent);
+  assert.deepEqual(labels, ['−10', '−5', '0', '5', '−1', '0', '1', '2', '3', '4 s']);
+
+  // Named channels hold, wherever the cursor rests.
+  press($('traces'), 'ArrowRight');
+  await wait(500);
+  assert.deepEqual(captions(), ['C3', 'C4']);
+  $('traces').dispatchEvent(new window.FocusEvent('blur'));
+});
+
+test('event-related power says which channel it can’t find or measure', async () => {
+  nameChannels('C4, Oz');
+  await until(() => figures().length === 1);
+  assert.equal(powerNote(), 'No channel named Oz.');
+  nameChannels('Pz');
+  await until(() => captions()[0] === 'Pz');
+  assert.equal(
+    figures()[0].querySelector('.note').textContent,
+    'Sampled too slowly for this band.',
+  );
+  assert.equal(figures()[0].querySelector('svg'), null);
+});
+
+test('event-related power can measure against another kind of annotation', async () => {
+  nameChannels('C3');
+  await until(() => captions()[0] === 'C3');
+  $('power-baseline').value = 'right';
+  $('power-baseline').dispatchEvent(new window.Event('change'));
+  // C3 is quieter during Right than before Left, so Left stands above it.
+  await until(() => decibels(keyOf(figures()[0])[0][2]) > 2);
+  assert.ok(decibels(keyOf(figures()[0])[0][2]) > 2);
+});
+
+test('event-related power needs a kind to average', async () => {
+  for (const box of kindBoxes()) box.click();
+  await until(() => figures().length === 0);
+  assert.equal(powerNote(), 'Choose annotations to average.');
+  kindBoxes()[0].click();
+  await until(() => figures().length === 1);
+  assert.deepEqual(
+    keyOf(figures()[0]).map(([kind]) => kind),
+    ['Left'],
+  );
+});
+
+test('event-related power follows the row the cursor rests on', async () => {
+  nameChannels('');
+  await until(() => powerNote().startsWith('Point'));
+  press($('traces'), 'ArrowRight');
+  press($('traces'), 'ArrowRight');
+  await until(() => captions()[0] === 'C3');
+  press($('traces'), 'ArrowDown');
+  await until(() => captions()[0] === 'C4');
+  // Passing over a row on the way somewhere else leaves the chart as it was.
+  press($('traces'), 'ArrowUp');
+  $('traces').dispatchEvent(new window.FocusEvent('blur'));
+  press($('traces'), 'ArrowRight');
+  press($('traces'), 'ArrowDown');
+  await wait(500);
+  assert.deepEqual(captions(), ['C4']);
+  $('traces').dispatchEvent(new window.FocusEvent('blur'));
+});
+
+test('event-related power measures the traces as drawn, and says so', async () => {
+  choose('highpass', '1');
+  await until(() => powerNote() === 'From the filtered traces');
+  assert.equal(powerNote(), 'From the filtered traces');
+  $('show-raw').click();
+  await until(() => powerNote() === 'From the traces as recorded');
+  assert.equal(powerNote(), 'From the traces as recorded');
+  $('show-raw').click();
+  choose('highpass', '');
+  await settled();
+});
+
+test('event-related power keeps its choices for the next recording', async () => {
+  await open('again.edf', imageryEdf());
+  assert.deepEqual(
+    kindBoxes().map(({ checked }) => checked),
+    [true, false, false],
+  );
+  assert.equal($('power-baseline').value, 'right');
+  // Kinds it hasn't seen start with every coloured kind chosen, and a baseline it can't find
+  // goes back to the second before.
+  await open('renamed.edf', imageryEdf({ left: 'T1', right: 'T2' }));
+  assert.deepEqual(
+    kindBoxes().map(({ checked }) => checked),
+    [true, true, true],
+  );
+  assert.equal($('power-baseline').value, '');
+});
+
+test('event-related power draws only the latest choice, however the runs overlap', async (t) => {
+  nameChannels('C3 C4');
+  await until(() => figures().length === 2);
+  // A clock that races, so that measuring pauses after every event.
+  let now = 0;
+  t.mock.method(performance, 'now', () => (now += 100));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const drawn = [];
+  const observer = new window.MutationObserver(() => drawn.push(captions()));
+  observer.observe($('power-charts'), { childList: true });
+  const hop = async () => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  };
+
+  // Mu starts measuring both channels, and pauses, and C4 alone overtakes it.
+  $('power-band').value = 'mu';
+  $('power-band').dispatchEvent(new window.Event('change'));
+  t.mock.timers.tick(60);
+  await hop();
+  nameChannels('C4');
+  for (let i = 0; i < 100; i += 1) {
+    t.mock.timers.tick(100);
+    await hop();
+  }
+  observer.disconnect();
+  assert.deepEqual(drawn, [['C4']]);
+});

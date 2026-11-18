@@ -61,6 +61,7 @@
         <ul>
           <li><a href="#bands">Frequency bands</a></li>
           <li><a href="#annotations">Annotations</a></li>
+          <li><a href="#event-power">Event-related power</a></li>
           <li><a href="#time-domain">Time domain</a></li>
           <li><a href="#info">Info</a></li>
         </ul>
@@ -192,6 +193,22 @@
     <h2 id="annotations">Annotations</h2>
     <p>Annotations in an EDF+ file, and events in a CSV file, appear on the time axis. Select one in the list to jump to it.</p>
     <p>The four commonest kinds of annotation each get a colour, on the traces and in the list. The colours stay apart for colour-blind readers too. Any further kinds are grey, and every annotation keeps its name.</p>
+
+    <h2 id="event-power">Event-related power</h2>
+    <p>This section shows how the power in a band falls or rises around one kind of annotation, averaged over its events. A fall is an event-related desynchronization (ERD), and a rise an event-related synchronization (ERS). The mu and beta rhythms over the motor cortex fall when a hand moves, or is imagined moving, most of all on the other side of the head: at C4 for the left hand and C3 for the right. A difference too small to see in single trials can show in the average.</p>
+    <p>Open the section, then choose:</p>
+    <table>
+      <tbody>
+        <tr><th scope="row">Average</th><td>The kinds of annotation to average, each drawn as a curve of its own. Kinds you choose stay chosen for the next recording that has them. Otherwise every kind with a colour starts chosen.</td></tr>
+        <tr><th scope="row">Band</th><td>8 to 30 Hz, which takes in both rhythms, or mu, 8 to 13 Hz, or beta, 13 to 30 Hz.</td></tr>
+        <tr><th scope="row">Baseline</th><td>What 0 dB stands for: the power in the second before the events, or the power during another kind of annotation, such as rest. A rest annotation counts from its onset for its duration, or for 4.5 s if it has none.</td></tr>
+        <tr><th scope="row">Channels</th><td>The channels to chart, such as <code>C3 C4</code>, by label or by the electrode a label names, so C3 finds <code>C3..</code> and <code>EEG C3-A2</code>. Separate names with commas if they have spaces in them. Left empty, the chart follows the row the cursor rests on.</td></tr>
+      </tbody>
+    </table>
+    <p>Each event's epoch runs from 1 s before its onset to 4.5 s after. The signal is band-passed, squared, smoothed over half a second and averaged across the events, then given in decibels against the baseline, where −3 dB is half the power. An event too near either end of the recording for a whole epoch is left out. The band-pass is a fourth-order Butterworth high-pass and low-pass, run forwards and backwards like the display filter, over each epoch and a second of the recording on either side.</p>
+    <p>Each curve has the colour of its annotations, and dashes of its own. The key under each chart names the kinds, counts the events averaged, and gives each kind's mean from 0.5 to 3.5 s after the onset, which leaves out the response to the onset itself. The charts share a scale, so their heights compare.</p>
+    <p>It measures the traces as drawn, with the display filter and montage, or as recorded while Show raw is on, and the line under the charts says which. A Laplacian montage brings out the mu rhythm under C3 and C4. A band reaching 30 Hz needs a sample rate above 66.7 Hz.</p>
+    <p>Ventris opens one file at a time, so it averages only that file's events. A motor imagery run of PhysioNet's EEG Motor Movement/Imagery dataset holds 7 or 8 events of each kind, so expect a noisy average, where a few dB either way can be chance. Studies average many more, over several runs.</p>
 
     <h2 id="time-domain">Time domain</h2>
     <p>These figures cover the whole recording as recorded, pooled across the EEG channels. The line under them says how many, and says "as recorded" while a display filter is on. EEG channels in a different unit from the first one are left out.</p>

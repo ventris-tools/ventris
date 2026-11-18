@@ -16,7 +16,7 @@ Ventris is the quick look before MNE-Python, EEGLAB or FieldTrip: what's in this
 
 - **Check a session while you can still redo it.** Spot flat channels, noisy channels and artifacts. A display filter and montage look past drift, mains hum and activity shared by every channel, and never change the file.
 - **Size up a dataset you didn't record.** Read its sample rate, channels, filters and duration before you write any code. EDF header fields follow MNE-Python's reader, so they usually match `mne.io.read_raw_edf`.
-- **Find your events.** Jump between annotations and check that they line up with the signal.
+- **Find your events.** Jump between annotations, check that they line up with the signal, and average the band power around each kind, as motor imagery studies do.
 - **Browse public datasets.** Open a recording from a NEMAR dataset by its GitHub link, with nothing to download or clone.
 - **Teach.** The demo shows a blink and eyes-closed alpha, with nothing for students to install.
 

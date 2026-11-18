@@ -17,7 +17,7 @@ export const NOTCH_Q = 30;
 
 // A filter this close to half the sample rate is skipped. The signal holds little there, and
 // the bilinear transform squeezes the filter against it.
-const NYQUIST_SHARE = 0.45;
+export const NYQUIST_SHARE = 0.45;
 
 // The padding at each end lasts until every filter's ringing falls to this share of a step.
 const SETTLE = 1e-5;
@@ -29,12 +29,14 @@ const CHUNK = 65536;
 // screen stay in memory while a new one is made, and a tab that runs out can be lost.
 export const MAX_FILTER_SAMPLES = 1.5e8;
 
-export function butterworth(kind, cutoff, fs) {
+// A second-order section. Its damping is √2 for a second-order Butterworth filter, and a
+// higher order cascades sections with the dampings its poles give, as js/erd.js does.
+export function butterworth(kind, cutoff, fs, damping = Math.SQRT2) {
   const k = Math.tan((Math.PI * cutoff) / fs);
-  const norm = 1 / (1 + Math.SQRT2 * k + k * k);
+  const norm = 1 / (1 + damping * k + k * k);
   const b0 = kind === 'lowpass' ? k * k * norm : norm;
   const b1 = kind === 'lowpass' ? 2 * b0 : -2 * b0;
-  return [b0, b1, b0, 1, 2 * (k * k - 1) * norm, (1 - Math.SQRT2 * k + k * k) * norm];
+  return [b0, b1, b0, 1, 2 * (k * k - 1) * norm, (1 - damping * k + k * k) * norm];
 }
 
 export function notch(frequency, fs, q = NOTCH_Q) {
